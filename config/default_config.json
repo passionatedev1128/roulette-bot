@@ -1,0 +1,44 @@
+{
+  "detection": {
+  "screen_region": [953, 511, 57, 55]
+  },
+  "strategy": {
+    "type": "martingale",
+    "base_bet": 10.0,
+    "max_gales": 5,
+    "multiplier": 2.0,
+    "custom_sequence": [10, 20, 40, 80, 160],
+    "bet_color_pattern": "opposite",
+    "zero_handling": {
+      "rule": "continue_sequence",
+      "reset_on_zero": false
+    }
+  },
+  "betting": {
+    "betting_areas": {
+    "red": [970, 904],
+    "black": [1040, 906]
+    },
+    "confirm_button": [1044, 949],
+    "requires_amount_entry": false,
+    "chip_selection": [1309, 947],
+    "human_delays": {
+      "min": 0.1,
+      "max": 0.5
+    }
+  },
+  "session": {
+    "maintenance_bet_interval": 1800,
+    "min_bet_amount": 1.0
+  },
+  "risk": {
+    "initial_balance": 1000.0,
+    "stop_loss": 500.0,
+    "guarantee_fund_percentage": 20
+  },
+  "logging": {
+    "logs_dir": "logs",
+    "log_level": "INFO"
+  }
+}
+

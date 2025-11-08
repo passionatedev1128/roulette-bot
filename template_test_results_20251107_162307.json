@@ -1,0 +1,317 @@
+{
+  "image_path": "template_frames/frame_00420.png",
+  "detection_result": {
+    "number": null,
+    "color": "black",
+    "zero": false,
+    "confidence": 0.5,
+    "method": "color_fallback"
+  },
+  "all_matches": [
+    {
+      "number": 8,
+      "confidence": 0.7680640816688538,
+      "location": [
+        80,
+        232
+      ]
+    },
+    {
+      "number": 9,
+      "confidence": 0.7238562107086182,
+      "location": [
+        62,
+        104
+      ]
+    },
+    {
+      "number": 6,
+      "confidence": 0.7216683626174927,
+      "location": [
+        81,
+        230
+      ]
+    },
+    {
+      "number": 5,
+      "confidence": 0.7118100523948669,
+      "location": [
+        79,
+        232
+      ]
+    },
+    {
+      "number": 3,
+      "confidence": 0.703152060508728,
+      "location": [
+        81,
+        235
+      ]
+    },
+    {
+      "number": 0,
+      "confidence": 0.668239414691925,
+      "location": [
+        84,
+        236
+      ]
+    },
+    {
+      "number": 4,
+      "confidence": 0.6420680284500122,
+      "location": [
+        61,
+        106
+      ]
+    },
+    {
+      "number": 26,
+      "confidence": 0.621488094329834,
+      "location": [
+        25,
+        233
+      ]
+    },
+    {
+      "number": 30,
+      "confidence": 0.6152933835983276,
+      "location": [
+        82,
+        233
+      ]
+    },
+    {
+      "number": 36,
+      "confidence": 0.6125760078430176,
+      "location": [
+        1563,
+        101
+      ]
+    },
+    {
+      "number": 7,
+      "confidence": 0.6090425848960876,
+      "location": [
+        1860,
+        122
+      ]
+    },
+    {
+      "number": 11,
+      "confidence": 0.607448935508728,
+      "location": [
+        1496,
+        108
+      ]
+    },
+    {
+      "number": 34,
+      "confidence": 0.5977699756622314,
+      "location": [
+        84,
+        233
+      ]
+    },
+    {
+      "number": 35,
+      "confidence": 0.5946456789970398,
+      "location": [
+        83,
+        231
+      ]
+    },
+    {
+      "number": 1,
+      "confidence": 0.5930264592170715,
+      "location": [
+        1861,
+        120
+      ]
+    },
+    {
+      "number": 18,
+      "confidence": 0.5630925297737122,
+      "location": [
+        13,
+        234
+      ]
+    },
+    {
+      "number": 25,
+      "confidence": 0.562982976436615,
+      "location": [
+        23,
+        233
+      ]
+    },
+    {
+      "number": 33,
+      "confidence": 0.5574080348014832,
+      "location": [
+        1775,
+        173
+      ]
+    },
+    {
+      "number": 21,
+      "confidence": 0.5567469596862793,
+      "location": [
+        26,
+        90
+      ]
+    },
+    {
+      "number": 2,
+      "confidence": 0.548699140548706,
+      "location": [
+        20,
+        233
+      ]
+    },
+    {
+      "number": 14,
+      "confidence": 0.5478765964508057,
+      "location": [
+        1481,
+        106
+      ]
+    },
+    {
+      "number": 28,
+      "confidence": 0.5438797473907471,
+      "location": [
+        72,
+        232
+      ]
+    },
+    {
+      "number": 19,
+      "confidence": 0.536191999912262,
+      "location": [
+        1507,
+        126
+      ]
+    },
+    {
+      "number": 32,
+      "confidence": 0.5291339755058289,
+      "location": [
+        1774,
+        171
+      ]
+    },
+    {
+      "number": 16,
+      "confidence": 0.5286881923675537,
+      "location": [
+        1529,
+        105
+      ]
+    },
+    {
+      "number": 13,
+      "confidence": 0.5220541954040527,
+      "location": [
+        1698,
+        167
+      ]
+    },
+    {
+      "number": 24,
+      "confidence": 0.5147583484649658,
+      "location": [
+        84,
+        112
+      ]
+    },
+    {
+      "number": 23,
+      "confidence": 0.5098595023155212,
+      "location": [
+        24,
+        232
+      ]
+    },
+    {
+      "number": 12,
+      "confidence": 0.4927189350128174,
+      "location": [
+        1367,
+        117
+      ]
+    },
+    {
+      "number": 31,
+      "confidence": 0.4861847758293152,
+      "location": [
+        1776,
+        173
+      ]
+    },
+    {
+      "number": 20,
+      "confidence": 0.4815179109573364,
+      "location": [
+        23,
+        233
+      ]
+    },
+    {
+      "number": 27,
+      "confidence": 0.47946450114250183,
+      "location": [
+        1710,
+        174
+      ]
+    },
+    {
+      "number": 29,
+      "confidence": 0.47250452637672424,
+      "location": [
+        1843,
+        176
+      ]
+    },
+    {
+      "number": 15,
+      "confidence": 0.4651940166950226,
+      "location": [
+        72,
+        234
+      ]
+    },
+    {
+      "number": 10,
+      "confidence": 0.4631876051425934,
+      "location": [
+        14,
+        235
+      ]
+    },
+    {
+      "number": 22,
+      "confidence": 0.44229429960250854,
+      "location": [
+        1780,
+        170
+      ]
+    },
+    {
+      "number": 17,
+      "confidence": 0.4306623339653015,
+      "location": [
+        1801,
+        245
+      ]
+    }
+  ],
+  "best_match": {
+    "number": 8,
+    "confidence": 0.7680640816688538,
+    "location": [
+      80,
+      232
+    ]
+  },
+  "template_count": 37
+}

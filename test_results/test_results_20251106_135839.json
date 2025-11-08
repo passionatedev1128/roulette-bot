@@ -1,0 +1,329 @@
+{
+  "video_path": "roleta_brazileria.mp4",
+  "config_path": "config\\default_config.json",
+  "total_frames": 7662,
+  "processed_frames": 29,
+  "successful_detections": 29,
+  "detection_rate": 100.0,
+  "results": [
+    {
+      "frame_number": 1,
+      "timestamp": 0.03333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 2,
+      "timestamp": 0.06666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 3,
+      "timestamp": 0.1,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 4,
+      "timestamp": 0.13333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 5,
+      "timestamp": 0.16666666666666666,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 6,
+      "timestamp": 0.2,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 7,
+      "timestamp": 0.23333333333333334,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 8,
+      "timestamp": 0.26666666666666666,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 9,
+      "timestamp": 0.3,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 10,
+      "timestamp": 0.3333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 11,
+      "timestamp": 0.36666666666666664,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 12,
+      "timestamp": 0.4,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 13,
+      "timestamp": 0.43333333333333335,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 14,
+      "timestamp": 0.4666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 15,
+      "timestamp": 0.5,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 16,
+      "timestamp": 0.5333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 17,
+      "timestamp": 0.5666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 18,
+      "timestamp": 0.6,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 19,
+      "timestamp": 0.6333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 20,
+      "timestamp": 0.6666666666666666,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 21,
+      "timestamp": 0.7,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 22,
+      "timestamp": 0.7333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 23,
+      "timestamp": 0.7666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 24,
+      "timestamp": 0.8,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 25,
+      "timestamp": 0.8333333333333334,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 26,
+      "timestamp": 0.8666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 27,
+      "timestamp": 0.9,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 28,
+      "timestamp": 0.9333333333333333,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    },
+    {
+      "frame_number": 29,
+      "timestamp": 0.9666666666666667,
+      "result": {
+        "number": 7,
+        "color": "red",
+        "zero": false,
+        "confidence": 0.9,
+        "method": "template"
+      }
+    }
+  ]
+}
