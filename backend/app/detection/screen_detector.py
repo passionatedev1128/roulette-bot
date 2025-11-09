@@ -103,30 +103,39 @@ class ScreenDetector:
             
             if region:
                 x, y, w, h = region
-                roi = frame[y:y+h, x:x+w]
+                roi = frame[y:y + h, x:x + w]
             else:
                 roi = frame
-            
+
             # Preprocess image for better OCR
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            
-            # Apply thresholding
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            
+            blur = cv2.GaussianBlur(gray, (3, 3), 0)
+            thresh = cv2.adaptiveThreshold(
+                blur,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                11,
+                2
+            )
+
             # OCR configuration
             custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789'
             text = pytesseract.image_to_string(thresh, config=custom_config)
-            
-            # Extract number
-            number = None
-            for char in text.strip():
-                if char.isdigit():
-                    number = int(char)
-                    if number >= 0 and number <= 36:
+
+            # Extract number (take first digit group)
+            digits = "".join(filter(str.isdigit, text))
+            if digits:
+                try:
+                    number = int(digits)
+                    if 0 <= number <= 36:
+                        logger.debug(f"OCR detected number: {number} from text '{text.strip()}'")
                         return number
-            
-            logger.debug(f"OCR detected text: '{text}', extracted number: {number}")
-            return number
+                except ValueError:
+                    pass
+
+            logger.debug(f"OCR detected text: '{text.strip()}', no valid number extracted")
+            return None
             
         except Exception as e:
             logger.debug(f"OCR detection failed: {e}")
