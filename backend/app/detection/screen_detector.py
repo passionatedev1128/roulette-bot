@@ -11,6 +11,14 @@ from PIL import Image
 import logging
 from typing import Dict, Optional, Tuple
 import time
+import re
+from pathlib import Path
+
+try:
+    import easyocr  # type: ignore
+    _EASY_OCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
+except Exception:  # pragma: no cover - optional dependency
+    _EASY_OCR_READER = None
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +34,12 @@ class ScreenDetector:
             config: Configuration dictionary with detection settings
         """
         self.config = config
-        self.screen_region = config.get('detection', {}).get('screen_region', None)
-        self.color_ranges = config.get('detection', {}).get('color_ranges', {})
+        detection_config = config.get('detection', {})
+        self.screen_region = detection_config.get('screen_region', None)
+        self.color_ranges = detection_config.get('color_ranges', {})
+        self.ocr_debug = bool(detection_config.get('ocr_debug', False))
+        self.winning_templates_dir = detection_config.get('winning_templates_dir', 'winning-numbers')
+        self.winning_template_threshold = float(detection_config.get('winning_template_threshold', 0.75))
         
         # Initialize color ranges if not provided
         if not self.color_ranges:
@@ -36,8 +48,71 @@ class ScreenDetector:
         # Detection history for validation
         self.detection_history = []
         self.max_history = 10
+
+        self.winning_templates = self._load_winning_number_templates()
         
         logger.info("ScreenDetector initialized")
+
+    def _preprocess_badge_image(self, image: np.ndarray) -> np.ndarray:
+        """Convert badge image to normalized grayscale for comparison."""
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        gray = cv2.equalizeHist(gray)
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        return gray
+
+    def _load_winning_number_templates(self):
+        """Load winning number templates from disk."""
+        templates = []
+        template_dir = Path(self.winning_templates_dir)
+        if not template_dir.exists():
+            logger.info("Winning templates directory not found: %s", template_dir)
+            return templates
+
+        for path in sorted(template_dir.glob("*.png")):
+            match = re.search(r'(\d+)', path.stem)
+            if not match:
+                continue
+            number = int(match.group(1))
+            img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if img is None:
+                continue
+            processed = self._preprocess_badge_image(img)
+            templates.append((number, processed))
+
+        if templates:
+            logger.info("Loaded %d winning number templates from %s", len(templates), template_dir)
+        else:
+            logger.warning("No winning number templates loaded from %s", template_dir)
+        return templates
+
+    def detect_winning_number_template(self, roi: np.ndarray) -> Optional[Tuple[int, float]]:
+        """Try to match ROI against cached winning-number templates."""
+        if not self.winning_templates:
+            return None
+
+        processed = self._preprocess_badge_image(roi)
+        best_number = None
+        best_score = -1.0
+
+        for number, template in self.winning_templates:
+            h, w = template.shape
+            resized = cv2.resize(processed, (w, h), interpolation=cv2.INTER_AREA)
+            try:
+                result = cv2.matchTemplate(resized, template, cv2.TM_CCOEFF_NORMED)
+                score = float(result[0][0])
+                if score > best_score:
+                    best_score = score
+                    best_number = number
+            except cv2.error as e:
+                logger.debug("Template match error for %s: %s", number, e)
+                continue
+
+        if best_number is not None and best_score >= self.winning_template_threshold:
+            return best_number, best_score
+        return None
     
     def _initialize_default_color_ranges(self):
         """Initialize default HSV color ranges for red, black, and green."""
@@ -94,12 +169,14 @@ class ScreenDetector:
             Detected number (0-36) or None
         """
         try:
-            # Check if pytesseract is available
+            tesseract_available = True
             try:
                 pytesseract.get_tesseract_version()
             except Exception:
-                logger.debug("Tesseract OCR not available, skipping OCR detection")
-                return None
+                tesseract_available = False
+                if _EASY_OCR_READER is None:
+                    logger.debug("No OCR backend available (tesseract missing, easyocr not installed)")
+                    return None
             
             if region:
                 x, y, w, h = region
@@ -107,34 +184,87 @@ class ScreenDetector:
             else:
                 roi = frame
 
-            # Preprocess image for better OCR
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            blur = cv2.GaussianBlur(gray, (3, 3), 0)
-            thresh = cv2.adaptiveThreshold(
-                blur,
-                255,
-                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY_INV,
-                11,
-                2
-            )
+            gray = cv2.equalizeHist(gray)
 
-            # OCR configuration
-            custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789'
-            text = pytesseract.image_to_string(thresh, config=custom_config)
+            # Upscale and blur for better readability
+            scaled = cv2.resize(gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+            blur = cv2.GaussianBlur(scaled, (3, 3), 0)
 
-            # Extract number (take first digit group)
-            digits = "".join(filter(str.isdigit, text))
-            if digits:
+            variants = [
+                ("adaptive_inv", cv2.adaptiveThreshold(
+                    blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 3)),
+                ("adaptive", cv2.adaptiveThreshold(
+                    blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 3)),
+            ]
+
+            # also consider the raw scaled image only if not blank
+            variants.append(("raw_scaled", scaled))
+
+            if self.ocr_debug:
+                debug_dir = Path("ocr_debug")
+                debug_dir.mkdir(exist_ok=True)
+                for name, img in variants:
+                    cv2.imwrite(str(debug_dir / f"{name}.png"), img)
+
+            if tesseract_available:
+                ocr_configs = [
+                    r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789',
+                    r'--oem 1 --psm 6 -c tessedit_char_whitelist=0123456789',
+                ]
+
+                for variant_name, image_variant in variants:
+                    for cfg in ocr_configs:
+                        text = pytesseract.image_to_string(image_variant, config=cfg)
+                        digits = "".join(filter(str.isdigit, text))
+                        if digits:
+                            try:
+                                number = int(digits)
+                                if 0 <= number <= 36:
+                                    logger.debug(
+                                        "OCR detected %s from text '%s' (variant=%s, cfg=%s)",
+                                        number,
+                                        text.strip(),
+                                        variant_name,
+                                        cfg,
+                                    )
+                                    return number
+                            except ValueError:
+                                continue
+
+            if _EASY_OCR_READER is not None:
+                # Bypass detector by providing full bounding box
+                rgb_scaled = cv2.cvtColor(scaled, cv2.COLOR_GRAY2RGB)
+                h, w = rgb_scaled.shape[:2]
+                bbox = [[0, 0, w, 0, w, h, 0, h]]
                 try:
-                    number = int(digits)
-                    if 0 <= number <= 36:
-                        logger.debug(f"OCR detected number: {number} from text '{text.strip()}'")
-                        return number
-                except ValueError:
-                    pass
+                    results = _EASY_OCR_READER.recognize(
+                        rgb_scaled,
+                        horizontal_list=bbox,
+                        free_list=[],
+                        detail=0,
+                        allowlist="0123456789",
+                    )
+                except TypeError:
+                    # Fallback to standard readtext if API signature differs
+                    results = _EASY_OCR_READER.readtext(
+                        rgb_scaled,
+                        detail=0,
+                        paragraph=False,
+                        allowlist="0123456789",
+                    )
+                for text in results:
+                    digits = "".join(filter(str.isdigit, text))
+                    if digits:
+                        try:
+                            number = int(digits)
+                            if 0 <= number <= 36:
+                                logger.debug("EasyOCR detected %s from text '%s'", number, text.strip())
+                                return number
+                        except ValueError:
+                            continue
 
-            logger.debug(f"OCR detected text: '{text.strip()}', no valid number extracted")
+            logger.debug("OCR failed to extract valid number from snapshot.")
             return None
             
         except Exception as e:
@@ -155,7 +285,6 @@ class ScreenDetector:
         """
         try:
             # Check if templates directory exists
-            from pathlib import Path
             template_path_obj = Path(templates_dir)
             if not template_path_obj.exists():
                 logger.debug(f"Templates directory not found: {templates_dir}")
@@ -368,25 +497,36 @@ class ScreenDetector:
             "method": None
         }
         
-        # Try template matching first (more reliable)
-        # Only use screen_region if specified in config
+        # Determine region of interest (winning badge)
         if self.screen_region:
             x, y, w, h = self.screen_region
             roi = frame[y:y+h, x:x+w]
-            number = self.detect_number_template(roi)
         else:
-            number = self.detect_number_template(frame)
-        
-        if number is not None:
+            roi = frame
+
+        # Try dedicated winning-number templates first
+        badge_match = self.detect_winning_number_template(roi)
+        if badge_match is not None:
+            number, confidence = badge_match
             result["number"] = number
             result["color"] = self.get_color_from_number(number)
             result["zero"] = (number == 0)
-            result["confidence"] = 0.9
-            result["method"] = "template"
+            result["confidence"] = float(confidence)
+            result["method"] = "template_badge"
+
+        # Fall back to generic grid templates if needed
+        if result["number"] is None:
+            number = self.detect_number_template(roi if self.screen_region else frame)
+            if number is not None:
+                result["number"] = number
+                result["color"] = self.get_color_from_number(number)
+                result["zero"] = (number == 0)
+                result["confidence"] = 0.9
+                result["method"] = "template"
         
         # Fallback to OCR
         if result["number"] is None:
-            number = self.detect_number_ocr(frame)
+            number = self.detect_number_ocr(roi)
             if number is not None:
                 result["number"] = number
                 result["color"] = self.get_color_from_number(number)
@@ -396,7 +536,7 @@ class ScreenDetector:
         
         # If still no number, try color detection only
         if result["number"] is None:
-            color = self.detect_color_hsv(frame)
+            color = self.detect_color_hsv(roi)
             if color:
                 result["color"] = color
                 result["confidence"] = 0.5
@@ -419,7 +559,7 @@ class ScreenDetector:
         
         logger.info(f"Detection result: {result}")
         return result
-    
+
     def validate_result(self, result: Dict) -> bool:
         """
         Validate detection result against history.

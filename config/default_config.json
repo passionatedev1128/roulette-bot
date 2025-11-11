@@ -1,6 +1,7 @@
 {
   "detection": {
-  "screen_region": [953, 511, 57, 55]
+  "screen_region": [953, 511, 57, 55],
+  "winning_templates_dir": "winning-numbers/"
   },
   "strategy": {
     "type": "martingale",
