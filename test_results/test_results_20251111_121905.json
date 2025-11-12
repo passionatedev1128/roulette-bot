@@ -1,0 +1,21 @@
+{
+  "video_path": "roleta_brazileria.mp4",
+  "config_path": "config\\default_config.json",
+  "total_frames": 7662,
+  "processed_frames": 1,
+  "successful_detections": 0,
+  "detection_rate": 0.0,
+  "results": [
+    {
+      "frame_number": 7662,
+      "timestamp": 255.4,
+      "result": {
+        "number": null,
+        "color": null,
+        "zero": false,
+        "confidence": 0.0,
+        "method": null
+      }
+    }
+  ]
+}

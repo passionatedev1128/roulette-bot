@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import json
 from datetime import datetime
+from typing import Optional
 
 from backend.app.detection import ScreenDetector
 from backend.app.detection.frame_detector import FrameDetector
@@ -21,6 +22,7 @@ def test_video_detection(
     output_dir: str = 'test_results',
     frame_skip: int = 1,
     start_seconds: float = 0.0,
+    end_seconds: Optional[float] = None,
     display_windows: bool = False,
     use_frame_detector: bool = False,
 ):
@@ -33,6 +35,7 @@ def test_video_detection(
         output_dir: Directory to save test results
         frame_skip: Process every Nth frame (1 = all frames)
         start_seconds: Start processing from this timestamp (seconds)
+        end_seconds: Stop processing at this timestamp (seconds)
         display_windows: Whether to show video frames in a window
     """
     # Load configuration
@@ -60,13 +63,17 @@ def test_video_detection(
     print(f"Video info: {total_frames} frames, {fps:.2f} FPS, {duration:.2f} seconds")
     print(f"Processing every {frame_skip} frame(s)...")
     
-    # Seek to start time if requested
+    # Calculate end frame if requested
     start_frame = 0
+    end_frame = total_frames if end_seconds is None else min(int(end_seconds * fps), total_frames)
+
     if start_seconds > 0 and fps > 0:
         start_frame = int(start_seconds * fps)
         start_frame = min(start_frame, max(total_frames - 1, 0))
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         print(f"Starting from {start_seconds:.2f}s (frame {start_frame})")
+    if end_seconds is not None:
+        print(f"Ending at {end_seconds:.2f}s (frame {end_frame})")
     print("-" * 60)
     
     # Create output directory
@@ -130,6 +137,13 @@ def test_video_detection(
                     "timestamp": frame_count / fps if fps > 0 else frame_count,
                     "error": str(e)
                 })
+
+            if use_frame_detector and frame_count >= total_frames:
+                print("Reached end of video.")
+                break
+            if frame_count >= end_frame:
+                print(f"Reached end frame {end_frame}.")
+                break
         
         if display_windows and frame is not None:
             if detector.screen_region:
@@ -271,6 +285,12 @@ def main():
         help='Start processing at this timestamp (seconds, default: 0)'
     )
     parser.add_argument(
+        '--end',
+        type=float,
+        default=None,
+        help='Stop processing at this timestamp (seconds)'
+    )
+    parser.add_argument(
         '--display',
         action='store_true',
         help='Show video frames in a window (requires GUI support)'
@@ -304,6 +324,7 @@ def main():
         args.output,
         args.skip,
         args.start,
+        args.end,
         args.display,
         use_frame_detector=(args.mode == 'frame')
     )
