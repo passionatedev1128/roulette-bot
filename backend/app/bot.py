@@ -10,7 +10,8 @@ from typing import Callable, Dict, List, Optional
 from pathlib import Path
 
 from .detection import ScreenDetector
-from .strategy import StrategyBase, MartingaleStrategy, FibonacciStrategy, CustomStrategy
+from .detection.game_state_detector import GameStateDetector, GameState
+from .strategy import StrategyBase, MartingaleStrategy, FibonacciStrategy, CustomStrategy, EvenOddStrategy
 from .betting import BetController
 from .logging import RouletteLogger
 from .config_loader import ConfigLoader
@@ -43,12 +44,24 @@ class RouletteBot:
         self.bet_controller = BetController(self.config)
         self.logger = RouletteLogger(self.config)
         
+        # Initialize game state detector (optional)
+        enable_game_state = self.config.get('detection', {}).get('enable_game_state', False)
+        if enable_game_state:
+            self.game_state_detector = GameStateDetector(self.config)
+        else:
+            self.game_state_detector = None
+        
         # Bot state
         self.running = False
         self.spin_number = 0
         self.result_history: List[Dict] = []
         self.current_balance = self.config.get('risk', {}).get('initial_balance', 1000.0)
+        self.initial_balance = self.current_balance
         self.last_maintenance_bet_time = time.time()
+        
+        # Stop conditions tracking
+        self.winning_rounds = 0
+        self.losing_rounds = 0
         
         # Events / callbacks
         self.event_dispatcher = event_dispatcher
@@ -100,6 +113,8 @@ class RouletteBot:
             return FibonacciStrategy(strategy_config)
         elif strategy_type == 'custom':
             return CustomStrategy(strategy_config)
+        elif strategy_type == 'even_odd':
+            return EvenOddStrategy(strategy_config)
         else:
             logger.warning(f"Unknown strategy type: {strategy_type}, using Martingale")
             return MartingaleStrategy(strategy_config)
@@ -137,7 +152,12 @@ class RouletteBot:
         Returns:
             True if maintenance bet should be placed
         """
-        interval = self.config.get('session', {}).get('maintenance_bet_interval', 1800)  # 30 minutes
+        # For Even/Odd strategy, use 29 minutes; others use configured interval
+        if isinstance(self.strategy, EvenOddStrategy):
+            interval = 1740  # 29 minutes in seconds
+        else:
+            interval = self.config.get('session', {}).get('maintenance_bet_interval', 1800)  # 30 minutes
+        
         elapsed = time.time() - self.last_maintenance_bet_time
         
         return elapsed >= interval
@@ -145,16 +165,35 @@ class RouletteBot:
     def place_maintenance_bet(self):
         """Place maintenance bet to keep session active."""
         try:
-            min_bet = self.config.get('session', {}).get('min_bet_amount', 1.0)
-            
-            # Place minimum bet on red (or alternate)
-            bet_result = self.bet_controller.place_bet('red', min_bet)
-            
-            if bet_result['success']:
-                self.last_maintenance_bet_time = time.time()
-                logger.info(f"Maintenance bet placed: {min_bet} on red")
+            # If using Even/Odd strategy, use its keepalive method
+            if isinstance(self.strategy, EvenOddStrategy):
+                keepalive_bet = self.strategy.get_keepalive_bet()
+                if keepalive_bet is None:
+                    logger.debug("Keepalive skipped: cycle is active")
+                    return
+                
+                bet_result = self.bet_controller.place_bet(
+                    keepalive_bet['bet_type'],
+                    keepalive_bet['bet_amount']
+                )
+                
+                if bet_result['success']:
+                    self.last_maintenance_bet_time = time.time()
+                    logger.info(f"Keepalive bet placed: {keepalive_bet['bet_amount']} on {keepalive_bet['bet_type']}")
+                else:
+                    logger.warning(f"Keepalive bet failed: {bet_result.get('error')}")
             else:
-                logger.warning(f"Maintenance bet failed: {bet_result.get('error')}")
+                # For other strategies, use traditional maintenance bet
+                min_bet = self.config.get('session', {}).get('min_bet_amount', 1.0)
+                
+                # Place minimum bet on red (or alternate)
+                bet_result = self.bet_controller.place_bet('red', min_bet)
+                
+                if bet_result['success']:
+                    self.last_maintenance_bet_time = time.time()
+                    logger.info(f"Maintenance bet placed: {min_bet} on red")
+                else:
+                    logger.warning(f"Maintenance bet failed: {bet_result.get('error')}")
                 
         except Exception as e:
             logger.error(f"Error placing maintenance bet: {e}")
@@ -215,11 +254,26 @@ class RouletteBot:
         
         # Determine result (win/loss) - this would need to be determined after round completes
         # For now, we'll log what we know
+        # Determine bet category (strategy/maintenance/gale) and bet color
+        bet_category = None
+        bet_color = None
+        if bet_decision:
+            # bet_type from strategy is actually the color (red/black/green)
+            bet_color = bet_decision.get('bet_type')
+            # Determine category based on context
+            if self.strategy.gale_step > 0:
+                bet_category = "gale"
+            elif bet_decision.get('strategy') == 'maintenance':
+                bet_category = "maintenance"
+            else:
+                bet_category = "strategy"
+        
         spin_data = {
             "spin_number": self.spin_number,
             "outcome_number": result.get('number'),
             "outcome_color": result.get('color'),
-            "bet_type": bet_decision.get('bet_type') if bet_decision else None,
+            "bet_category": bet_category,
+            "bet_color": bet_color,
             "bet_amount": bet_decision.get('bet_amount') if bet_decision else 0.0,
             "balance_before": self.current_balance,
             "balance_after": self.current_balance,  # Will be updated after round
@@ -252,24 +306,85 @@ class RouletteBot:
             "spin_data": spin_data
         }
     
-    def update_after_round(self, spin_result: Dict, won: bool):
+    def _determine_bet_result(self, bet_type: str, result_number: int) -> bool:
+        """
+        Determine if a bet won based on bet type and result number.
+        
+        Args:
+            bet_type: 'red', 'black', 'green', 'even', 'odd', or number string
+            result_number: The winning number (0-36)
+            
+        Returns:
+            True if bet won, False if lost
+        """
+        if bet_type is None:
+            return False
+            
+        # Even/Odd bets
+        if bet_type == 'even':
+            # Even numbers: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36
+            even_numbers = {2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36}
+            return result_number in even_numbers
+            
+        if bet_type == 'odd':
+            # Odd numbers: 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35
+            odd_numbers = {1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35}
+            return result_number in odd_numbers
+        
+        # Color bets
+        red_numbers = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
+        black_numbers = {2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35}
+        
+        if bet_type == 'red':
+            return result_number in red_numbers
+        if bet_type == 'black':
+            return result_number in black_numbers
+        if bet_type == 'green':
+            return result_number == 0
+        
+        # Number bets
+        try:
+            bet_number = int(bet_type)
+            return result_number == bet_number
+        except (ValueError, TypeError):
+            logger.warning(f"Unknown bet type: {bet_type}")
+            return False
+    
+    def update_after_round(self, spin_result: Dict, result_number: Optional[int] = None):
         """
         Update bot state after round completes.
         
         Args:
             spin_result: Result from process_spin
-            won: True if bet won, False if lost
+            result_number: The winning number (0-36). If None, uses spin_result data.
         """
         bet_amount = spin_result['spin_data'].get('bet_amount', 0.0)
+        bet_type = spin_result['spin_data'].get('bet_color') or spin_result.get('bet_decision', {}).get('bet_type')
+        
+        # Get result number
+        if result_number is None:
+            result_number = spin_result.get('result', {}).get('number')
+            if result_number is None:
+                result_number = spin_result['spin_data'].get('outcome_number')
+        
+        # Determine if bet won
+        if bet_type and result_number is not None:
+            won = self._determine_bet_result(bet_type, result_number)
+        else:
+            # Fallback: if we can't determine, assume loss (conservative)
+            logger.warning(f"Cannot determine bet result: bet_type={bet_type}, result_number={result_number}")
+            won = False
         
         if won:
             profit = bet_amount  # Assuming 1:1 payout
             self.current_balance += profit
             result = "win"
+            self.winning_rounds += 1
         else:
             profit = -bet_amount
             self.current_balance -= bet_amount
             result = "loss"
+            self.losing_rounds += 1
         
         # Update strategy
         self.strategy.update_after_bet({
@@ -282,13 +397,14 @@ class RouletteBot:
         self.bet_controller.reset_bet_flag()
         
         # Update spin data in log (would need to modify logger to support this)
-        logger.info(f"Round completed: {result}, Balance: {self.current_balance}")
+        logger.info(f"Round completed: {result}, Balance: {self.current_balance}, Bet: {bet_type}, Result: {result_number}")
 
         self._emit_event("bet_resolved", {
             "spin_number": spin_result['spin_number'],
-            "bet_type": spin_result['spin_data'].get('bet_type'),
+            "bet_type": bet_type,
             "bet_amount": spin_result['spin_data'].get('bet_amount', 0.0),
             "result": result,
+            "result_number": result_number,
             "profit_loss": profit,
             "balance": self.current_balance,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -297,20 +413,45 @@ class RouletteBot:
     
     def check_stop_conditions(self) -> bool:
         """
-        Check if bot should stop.
+        Check if bot should stop (StopLoss or StopWin).
         
         Returns:
             True if should stop, False otherwise
         """
-        stop_loss = self.config.get('risk', {}).get('stop_loss', 0.0)
+        risk_config = self.config.get('risk', {})
         
-        if self.current_balance <= stop_loss:
-            logger.warning(f"Stop loss reached: balance={self.current_balance}, stop_loss={stop_loss}")
+        # StopLoss by money
+        stop_loss_money = risk_config.get('stop_loss', 0.0)
+        if stop_loss_money > 0 and self.current_balance <= stop_loss_money:
+            logger.warning(f"StopLoss (money) reached: balance={self.current_balance}, stop_loss={stop_loss_money}")
             return True
         
+        # StopLoss by count
+        stop_loss_count = risk_config.get('stop_loss_count', None)
+        if stop_loss_count is not None and self.losing_rounds >= stop_loss_count:
+            logger.warning(f"StopLoss (count) reached: losing_rounds={self.losing_rounds}, threshold={stop_loss_count}")
+            return True
+        
+        # StopWin by money
+        stop_win_money = risk_config.get('stop_win', None)
+        if stop_win_money is not None:
+            net_pnl = self.current_balance - self.initial_balance
+            if net_pnl >= stop_win_money:
+                logger.warning(f"StopWin (money) reached: net_pnl={net_pnl}, stop_win={stop_win_money}")
+                return True
+        
+        # StopWin by count
+        stop_win_count = risk_config.get('stop_win_count', None)
+        if stop_win_count is not None and self.winning_rounds >= stop_win_count:
+            logger.warning(f"StopWin (count) reached: winning_rounds={self.winning_rounds}, threshold={stop_win_count}")
+            return True
+        
+        # Max gale reached (only stop if not in a cycle that should complete)
         if self.strategy.is_gale_max_reached():
-            logger.warning("Maximum gale steps reached")
-            return True
+            # For Even/Odd strategy, this is handled in cycle management
+            if not isinstance(self.strategy, EvenOddStrategy):
+                logger.warning("Maximum gale steps reached")
+                return True
         
         return False
     
@@ -332,16 +473,36 @@ class RouletteBot:
                 if self.check_maintenance_bet():
                     self.place_maintenance_bet()
                 
+                # Capture frame for game state detection (if enabled)
+                frame = None
+                if self.game_state_detector:
+                    try:
+                        frame = self.detector.capture_screen()
+                    except Exception as e:
+                        logger.debug(f"Failed to capture frame for state detection: {e}")
+                
                 # Detect result
                 result = self.detect_result()
                 
-                if result:
+                # Detect game state (if enabled)
+                game_state = None
+                if self.game_state_detector and frame is not None:
+                    game_state = self.game_state_detector.detect_state(frame, result)
+                    logger.debug(f"Game state: {game_state.value}")
+                
+                # Only process result if game state allows (or if state detection disabled)
+                if result and (not self.game_state_detector or 
+                              self.game_state_detector.is_result_ready(game_state)):
                     # Process spin
                     spin_result = self.process_spin(result)
                     
                     # Wait for round to complete
                     # In real implementation, this would wait for next spin indicator
                     time.sleep(30)  # Placeholder - adjust based on game timing
+                elif result and self.game_state_detector:
+                    # Result detected but state not ready (e.g., still spinning)
+                    logger.debug(f"Result detected but game state not ready: {game_state.value if game_state else 'unknown'}")
+                    time.sleep(1)
                 else:
                     logger.warning("Failed to detect result, retrying...")
                     time.sleep(5)

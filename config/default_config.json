@@ -1,19 +1,17 @@
 {
   "detection": {
   "screen_region": [953, 511, 57, 55],
-  "winning_templates_dir": "winning-numbers/"
+  "winning_templates_dir": "winning-numbers/",
+  "winning_template_threshold": 0.65
   },
   "strategy": {
-    "type": "martingale",
+    "type": "even_odd",
     "base_bet": 10.0,
     "max_gales": 5,
     "multiplier": 2.0,
-    "custom_sequence": [10, 20, 40, 80, 160],
-    "bet_color_pattern": "opposite",
-    "zero_handling": {
-      "rule": "continue_sequence",
-      "reset_on_zero": false
-    }
+    "streak_length": 5,
+    "zero_policy": "count_as_loss",
+    "keepalive_stake": 1.0
   },
   "betting": {
     "betting_areas": {
@@ -55,7 +53,9 @@
     "35": [1189, 822],
     "36": [1191, 791],  
     "red": [970, 904],
-    "black": [1040, 906]
+    "black": [1040, 906],
+    "even": [907, 905],
+    "odd": [1111, 906]
     },
     "confirm_button": [1044, 949],
     "requires_amount_entry": false,

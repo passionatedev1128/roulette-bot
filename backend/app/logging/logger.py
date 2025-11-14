@@ -44,12 +44,13 @@ class RouletteLogger:
     
     def _initialize_csv(self):
         """Initialize CSV file with headers."""
-        headers = [
+        self.csv_headers = [
             'timestamp',
             'spin_number',
             'outcome_number',
             'outcome_color',
-            'bet_type',
+            'bet_category',
+            'bet_color',
             'bet_amount',
             'balance_before',
             'balance_after',
@@ -63,7 +64,7 @@ class RouletteLogger:
         ]
         
         with open(self.csv_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=headers)
+            writer = csv.DictWriter(f, fieldnames=self.csv_headers)
             writer.writeheader()
     
     def log_spin(self, spin_data: Dict):
@@ -92,11 +93,16 @@ class RouletteLogger:
         # Add timestamp
         spin_data['timestamp'] = datetime.now().isoformat()
         
+        # Ensure all required fields exist with default values
+        row_data = {}
+        for header in self.csv_headers:
+            row_data[header] = spin_data.get(header, '')
+        
         # Write to CSV
         try:
             with open(self.csv_file, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=spin_data.keys())
-                writer.writerow(spin_data)
+                writer = csv.DictWriter(f, fieldnames=self.csv_headers)
+                writer.writerow(row_data)
         except Exception as e:
             logger.error(f"Error writing to CSV: {e}")
         

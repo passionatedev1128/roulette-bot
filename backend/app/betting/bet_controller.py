@@ -53,7 +53,7 @@ class BetController:
         Find betting area coordinates for bet type.
         
         Args:
-            bet_type: 'red', 'black', 'green', or 'number'
+            bet_type: 'red', 'black', 'green', 'even', 'odd', or 'number'
             
         Returns:
             Tuple of (x, y) coordinates or None
@@ -174,7 +174,7 @@ class BetController:
         Place a bet on the table.
         
         Args:
-            bet_type: 'red', 'black', 'green', or number string
+            bet_type: 'red', 'black', 'green', 'even', 'odd', or number string
             bet_amount: Amount to bet
             
         Returns:

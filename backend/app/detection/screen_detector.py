@@ -96,6 +96,7 @@ class ScreenDetector:
         processed = self._preprocess_badge_image(roi)
         best_number = None
         best_score = -1.0
+        all_scores = {}  # Track all scores for debugging
 
         for number, template in self.winning_templates:
             h, w = template.shape
@@ -103,6 +104,7 @@ class ScreenDetector:
             try:
                 result = cv2.matchTemplate(resized, template, cv2.TM_CCOEFF_NORMED)
                 score = float(result[0][0])
+                all_scores[number] = score
                 if score > best_score:
                     best_score = score
                     best_number = number
@@ -110,8 +112,17 @@ class ScreenDetector:
                 logger.debug("Template match error for %s: %s", number, e)
                 continue
 
-        if best_number is not None and best_score >= self.winning_template_threshold:
-            return best_number, best_score
+        # Log all scores if best score is below threshold (for debugging)
+        if best_number is not None:
+            if best_score < self.winning_template_threshold:
+                logger.debug(
+                    "Template match below threshold: best=%d (%.3f), threshold=%.3f. All scores: %s",
+                    best_number, best_score, self.winning_template_threshold,
+                    {k: f"{v:.3f}" for k, v in sorted(all_scores.items(), key=lambda x: x[1], reverse=True)}
+                )
+            if best_score >= self.winning_template_threshold:
+                return best_number, best_score
+        
         return None
     
     def _initialize_default_color_ranges(self):
