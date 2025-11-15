@@ -25,6 +25,7 @@ def test_video_detection(
     end_seconds: Optional[float] = None,
     display_windows: bool = False,
     use_frame_detector: bool = False,
+    max_frames: Optional[int] = None,
 ):
     """
     Test detection on video file.
@@ -37,6 +38,8 @@ def test_video_detection(
         start_seconds: Start processing from this timestamp (seconds)
         end_seconds: Stop processing at this timestamp (seconds)
         display_windows: Whether to show video frames in a window
+        use_frame_detector: Whether to use FrameDetector (for video files)
+        max_frames: Maximum number of frames to process (None = unlimited)
     """
     # Load configuration
     print(f"Loading configuration from {config_path}...")
@@ -85,6 +88,13 @@ def test_video_detection(
     frame_count = start_frame
     processed_count = 0
     successful_detections = 0
+    
+    # Calculate max frames to process
+    if max_frames is not None:
+        max_frames_to_process = min(max_frames, end_frame - start_frame)
+        print(f"Processing up to {max_frames_to_process} frames...")
+    else:
+        max_frames_to_process = None
     
     # Process frames
     print("\nProcessing frames...")
@@ -138,6 +148,11 @@ def test_video_detection(
                     "error": str(e)
                 })
 
+            # Check max frames limit
+            if max_frames_to_process is not None and processed_count >= max_frames_to_process:
+                print(f"Reached max frames limit ({max_frames_to_process}).")
+                break
+            
             if use_frame_detector and frame_count >= total_frames:
                 print("Reached end of video.")
                 break
@@ -302,6 +317,13 @@ def main():
         default='screen',
         help='screen: capture desktop, frame: read from video file'
     )
+    parser.add_argument(
+        '--max-frames',
+        type=int,
+        default=None,
+        dest='max_frames',
+        help='Maximum number of frames to process (default: unlimited)'
+    )
     
     args = parser.parse_args()
     
@@ -326,7 +348,8 @@ def main():
         args.start,
         args.end,
         args.display,
-        use_frame_detector=(args.mode == 'frame')
+        use_frame_detector=(args.mode == 'frame'),
+        max_frames=args.max_frames
     )
 
 

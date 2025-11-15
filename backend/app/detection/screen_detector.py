@@ -6,7 +6,6 @@ Captures roulette table and detects winning number, color, and zero position.
 import cv2
 import numpy as np
 import pytesseract
-import pyautogui
 from PIL import Image
 import logging
 from typing import Dict, Optional, Tuple
@@ -14,13 +13,23 @@ import time
 import re
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+# Lazy import pyautogui - only needed for screen capture, not for frame mode
+try:
+    import pyautogui
+    _PYAUTOGUI_AVAILABLE = True
+except (ImportError, OSError, KeyError, RuntimeError) as e:
+    # Handle headless environments (like Colab) gracefully
+    # KeyError can occur when DISPLAY env var is missing (Colab)
+    _PYAUTOGUI_AVAILABLE = False
+    logger.debug(f"pyautogui not available (headless environment?): {e}")
+
 try:
     import easyocr  # type: ignore
     _EASY_OCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
 except Exception:  # pragma: no cover - optional dependency
     _EASY_OCR_READER = None
-
-logger = logging.getLogger(__name__)
 
 
 class ScreenDetector:
@@ -40,6 +49,9 @@ class ScreenDetector:
         self.ocr_debug = bool(detection_config.get('ocr_debug', False))
         self.winning_templates_dir = detection_config.get('winning_templates_dir', 'winning-numbers')
         self.winning_template_threshold = float(detection_config.get('winning_template_threshold', 0.75))
+        self.enable_ocr_fallback = bool(detection_config.get('enable_ocr_fallback', True))
+        self.ocr_confidence_threshold = float(detection_config.get('ocr_confidence_threshold', 30.0))
+        self.ocr_only_if_no_templates = bool(detection_config.get('ocr_only_if_no_templates', False))
         
         # Initialize color ranges if not provided
         if not self.color_ranges:
@@ -150,6 +162,12 @@ class ScreenDetector:
         Returns:
             Frame as numpy array
         """
+        if not _PYAUTOGUI_AVAILABLE:
+            raise RuntimeError(
+                "pyautogui not available. Cannot capture screen in headless environment. "
+                "Use --mode frame for video file processing instead."
+            )
+        
         try:
             if self.screen_region:
                 # Capture specific region
@@ -168,9 +186,106 @@ class ScreenDetector:
             logger.error(f"Error capturing screen: {e}")
             raise
     
+    def _is_region_likely_empty(self, roi: np.ndarray) -> bool:
+        """
+        Check if region is likely empty (no number present).
+        Helps prevent OCR false positives.
+        More strict checks to catch empty regions.
+        
+        Args:
+            roi: Region of interest image
+            
+        Returns:
+            True if region appears empty, False if likely contains content
+        """
+        try:
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if len(roi.shape) == 3 else roi
+            
+            # Check variance - empty regions have low variance
+            variance = np.var(gray)
+            if variance < 200:  # Increased threshold - more strict
+                logger.debug(f"Region appears empty (variance={variance:.1f} < 200)")
+                return True
+            
+            # Check edge density - numbers have edges
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / (edges.shape[0] * edges.shape[1])
+            if edge_density < 0.08:  # Increased threshold - more strict (8% instead of 5%)
+                logger.debug(f"Region appears empty (edge_density={edge_density:.3f} < 0.08)")
+                return True
+            
+            # Check if image is mostly uniform (single color)
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+            hist_normalized = hist / hist.sum()
+            max_bin_ratio = hist_normalized.max()
+            if max_bin_ratio > 0.75:  # More strict - 75% instead of 80%
+                logger.debug(f"Region appears uniform/empty (max_bin_ratio={max_bin_ratio:.3f} > 0.75)")
+                return True
+            
+            # Additional check: standard deviation
+            std_dev = np.std(gray)
+            if std_dev < 15:  # Very low standard deviation = likely uniform/empty
+                logger.debug(f"Region appears empty (std_dev={std_dev:.1f} < 15)")
+                return True
+            
+            # Check contrast - numbers need contrast
+            min_val = np.min(gray)
+            max_val = np.max(gray)
+            contrast = max_val - min_val
+            if contrast < 30:  # Very low contrast = likely empty
+                logger.debug(f"Region appears empty (contrast={contrast:.1f} < 30)")
+                return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Error checking if region is empty: {e}")
+            return False  # If check fails, assume not empty (conservative)
+    
+    def _validate_ocr_result(self, roi: np.ndarray, detected_number: int) -> bool:
+        """
+        Post-OCR validation: Double-check if OCR result makes sense.
+        Additional validation after OCR detects a number.
+        
+        Args:
+            roi: Region of interest image
+            detected_number: Number detected by OCR
+            
+        Returns:
+            True if result seems valid, False if likely false positive
+        """
+        try:
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if len(roi.shape) == 3 else roi
+            
+            # Re-check if region is empty (more strict check)
+            if self._is_region_likely_empty(roi):
+                logger.debug(f"OCR result {detected_number} rejected - region appears empty on re-check")
+                return False
+            
+            # Check if we have enough text-like features
+            # Numbers should have clear edges and structure
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / (edges.shape[0] * edges.shape[1])
+            
+            # If edge density is very low, OCR probably hallucinated
+            if edge_density < 0.10:  # Less than 10% edges = suspicious
+                logger.debug(f"OCR result {detected_number} rejected - low edge density ({edge_density:.3f})")
+                return False
+            
+            # Check variance - real numbers have variance
+            variance = np.var(gray)
+            if variance < 300:  # Very low variance = suspicious
+                logger.debug(f"OCR result {detected_number} rejected - low variance ({variance:.1f})")
+                return False
+            
+            return True
+        except Exception as e:
+            logger.debug(f"Error validating OCR result: {e}")
+            return True  # If validation fails, accept result (conservative)
+    
     def detect_number_ocr(self, frame: np.ndarray, region: Optional[Tuple] = None) -> Optional[int]:
         """
         Detect number using OCR.
+        More conservative - validates region has content before trusting OCR.
         
         Args:
             frame: Input frame
@@ -194,6 +309,11 @@ class ScreenDetector:
                 roi = frame[y:y + h, x:x + w]
             else:
                 roi = frame
+
+            # Check if region is likely empty before trying OCR
+            if self._is_region_likely_empty(roi):
+                logger.debug("Skipping OCR - region appears empty")
+                return None
 
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
@@ -224,24 +344,76 @@ class ScreenDetector:
                     r'--oem 1 --psm 6 -c tessedit_char_whitelist=0123456789',
                 ]
 
+                # Track best OCR result with confidence
+                best_result = None
+                best_confidence = 0.0
+                
                 for variant_name, image_variant in variants:
                     for cfg in ocr_configs:
-                        text = pytesseract.image_to_string(image_variant, config=cfg)
-                        digits = "".join(filter(str.isdigit, text))
-                        if digits:
-                            try:
-                                number = int(digits)
-                                if 0 <= number <= 36:
-                                    logger.debug(
-                                        "OCR detected %s from text '%s' (variant=%s, cfg=%s)",
-                                        number,
-                                        text.strip(),
-                                        variant_name,
-                                        cfg,
-                                    )
-                                    return number
-                            except ValueError:
-                                continue
+                        try:
+                            # Get OCR data with confidence
+                            ocr_data = pytesseract.image_to_data(image_variant, config=cfg, output_type=pytesseract.Output.DICT)
+                            text = pytesseract.image_to_string(image_variant, config=cfg)
+                            
+                            # Extract digits and check confidence
+                            digits = "".join(filter(str.isdigit, text))
+                            if digits:
+                                # Calculate average confidence for detected text
+                                confidences = [int(conf) for conf, txt in zip(ocr_data.get('conf', []), ocr_data.get('text', [])) 
+                                             if txt.strip() and txt.strip().isdigit()]
+                                
+                                if confidences:
+                                    avg_confidence = sum(confidences) / len(confidences)
+                                    # Only accept if confidence meets threshold
+                                    if avg_confidence >= self.ocr_confidence_threshold:
+                                        try:
+                                            number = int(digits)
+                                            if 0 <= number <= 36:
+                                                if avg_confidence > best_confidence:
+                                                    best_confidence = avg_confidence
+                                                    best_result = number
+                                                    logger.debug(
+                                                        "OCR detected %s from text '%s' (confidence=%.1f, variant=%s, cfg=%s)",
+                                                        number,
+                                                        text.strip(),
+                                                        avg_confidence,
+                                                        variant_name,
+                                                        cfg,
+                                                    )
+                                        except ValueError:
+                                            continue
+                                else:
+                                    # Fallback: if no confidence data, be more strict
+                                    # Only accept single digit results (less likely to be false positive)
+                                    if len(digits) == 1:
+                                        try:
+                                            number = int(digits)
+                                            if 0 <= number <= 36:
+                                                # Lower confidence for results without confidence data
+                                                if 0.5 > best_confidence:
+                                                    best_confidence = 0.5
+                                                    best_result = number
+                                                    logger.debug(
+                                                        "OCR detected %s from text '%s' (no confidence data, variant=%s)",
+                                                        number,
+                                                        text.strip(),
+                                                        variant_name,
+                                                    )
+                                        except ValueError:
+                                            continue
+                        except Exception as e:
+                            logger.debug(f"OCR error with variant {variant_name}: {e}")
+                            continue
+                
+                # Only return if we have a reasonably confident result AND it passes validation
+                if best_result is not None and best_confidence >= self.ocr_confidence_threshold:
+                    # Additional validation: check if result makes sense
+                    if self._validate_ocr_result(roi, best_result):
+                        return best_result
+                    else:
+                        logger.debug(f"OCR result {best_result} rejected - failed post-validation")
+                elif best_result is not None:
+                    logger.debug(f"OCR result {best_result} rejected (confidence {best_confidence:.1f} < {self.ocr_confidence_threshold})")
 
             if _EASY_OCR_READER is not None:
                 # Bypass detector by providing full bounding box
@@ -249,31 +421,67 @@ class ScreenDetector:
                 h, w = rgb_scaled.shape[:2]
                 bbox = [[0, 0, w, 0, w, h, 0, h]]
                 try:
-                    results = _EASY_OCR_READER.recognize(
-                        rgb_scaled,
-                        horizontal_list=bbox,
-                        free_list=[],
-                        detail=0,
-                        allowlist="0123456789",
-                    )
-                except TypeError:
-                    # Fallback to standard readtext if API signature differs
-                    results = _EASY_OCR_READER.readtext(
-                        rgb_scaled,
-                        detail=0,
-                        paragraph=False,
-                        allowlist="0123456789",
-                    )
-                for text in results:
-                    digits = "".join(filter(str.isdigit, text))
-                    if digits:
-                        try:
-                            number = int(digits)
-                            if 0 <= number <= 36:
-                                logger.debug("EasyOCR detected %s from text '%s'", number, text.strip())
-                                return number
-                        except ValueError:
-                            continue
+                    # Try to get detailed results with confidence
+                    try:
+                        results = _EASY_OCR_READER.readtext(
+                            rgb_scaled,
+                            detail=1,  # Get confidence scores
+                            paragraph=False,
+                            allowlist="0123456789",
+                        )
+                    except TypeError:
+                        # Fallback if detail parameter not supported
+                        results = _EASY_OCR_READER.readtext(
+                            rgb_scaled,
+                            detail=0,
+                            paragraph=False,
+                            allowlist="0123456789",
+                        )
+                    
+                    best_result = None
+                    best_confidence = 0.0
+                    
+                    for item in results:
+                        if isinstance(item, tuple) and len(item) >= 2:
+                            # Format: (bbox, text, confidence)
+                            text = item[1] if len(item) > 1 else str(item[0])
+                            confidence = item[2] if len(item) > 2 else 0.5
+                        else:
+                            # Format: just text
+                            text = str(item)
+                            confidence = 0.5  # Default confidence if not provided
+                        
+                        digits = "".join(filter(str.isdigit, text))
+                        if digits:
+                            try:
+                                number = int(digits)
+                                if 0 <= number <= 36:
+                                    # Only accept if confidence is reasonable (>= 0.3 for EasyOCR)
+                                    if confidence >= 0.3 and confidence > best_confidence:
+                                        best_confidence = confidence
+                                        best_result = number
+                                        logger.debug(
+                                            "EasyOCR detected %s from text '%s' (confidence=%.2f)",
+                                            number,
+                                            text.strip(),
+                                            confidence
+                                        )
+                            except ValueError:
+                                continue
+                    
+                    # Only return if we have a reasonably confident result AND it passes validation
+                    if best_result is not None and best_confidence >= 0.3:
+                        # Additional validation: check if result makes sense
+                        if self._validate_ocr_result(roi, best_result):
+                            return best_result
+                        else:
+                            logger.debug(f"EasyOCR result {best_result} rejected - failed post-validation")
+                    elif best_result is not None:
+                        logger.debug(f"EasyOCR result {best_result} rejected (confidence {best_confidence:.2f} < 0.3)")
+                        
+                except Exception as e:
+                    logger.debug(f"EasyOCR error: {e}")
+                    pass
 
             logger.debug("OCR failed to extract valid number from snapshot.")
             return None
@@ -535,15 +743,19 @@ class ScreenDetector:
                 result["confidence"] = 0.9
                 result["method"] = "template"
         
-        # Fallback to OCR
-        if result["number"] is None:
-            number = self.detect_number_ocr(roi)
-            if number is not None:
-                result["number"] = number
-                result["color"] = self.get_color_from_number(number)
-                result["zero"] = (number == 0)
-                result["confidence"] = 0.7
-                result["method"] = "ocr"
+        # Fallback to OCR (only if enabled)
+        if result["number"] is None and self.enable_ocr_fallback:
+            # If ocr_only_if_no_templates is True, only use OCR if we have no templates at all
+            if self.ocr_only_if_no_templates and len(self.winning_templates) > 0:
+                logger.debug("Skipping OCR - templates available and ocr_only_if_no_templates is enabled")
+            else:
+                number = self.detect_number_ocr(roi)
+                if number is not None:
+                    result["number"] = number
+                    result["color"] = self.get_color_from_number(number)
+                    result["zero"] = (number == 0)
+                    result["confidence"] = 0.7
+                    result["method"] = "ocr"
         
         # If still no number, try color detection only
         if result["number"] is None:

@@ -2,7 +2,10 @@
   "detection": {
   "screen_region": [953, 511, 57, 55],
   "winning_templates_dir": "winning-numbers/",
-  "winning_template_threshold": 0.65
+  "winning_template_threshold": 0.65,
+  "enable_ocr_fallback": false,
+  "ocr_confidence_threshold": 70.0,
+  "ocr_only_if_no_templates": true
   },
   "strategy": {
     "type": "even_odd",
