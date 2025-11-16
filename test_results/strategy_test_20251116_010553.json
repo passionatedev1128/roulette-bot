@@ -1,0 +1,901 @@
+{
+  "video_path": "roleta_brazileria.mp4",
+  "config": {
+    "detection": {
+      "screen_region": [
+        953,
+        511,
+        57,
+        55
+      ],
+      "winning_templates_dir": "winning-numbers/",
+      "winning_template_threshold": 0.65,
+      "enable_ocr_fallback": false,
+      "ocr_confidence_threshold": 70.0,
+      "ocr_only_if_no_templates": true
+    },
+    "strategy": {
+      "type": "even_odd",
+      "base_bet": 10.0,
+      "max_gales": 5,
+      "multiplier": 2.0,
+      "streak_length": 5,
+      "zero_policy": "count_as_loss",
+      "keepalive_stake": 1.0
+    },
+    "betting": {
+      "betting_areas": {
+        "0": [
+          786,
+          825
+        ],
+        "1": [
+          818,
+          858
+        ],
+        "2": [
+          817,
+          821
+        ],
+        "3": [
+          817,
+          790
+        ],
+        "4": [
+          854,
+          858
+        ],
+        "5": [
+          851,
+          825
+        ],
+        "6": [
+          851,
+          790
+        ],
+        "7": [
+          884,
+          857
+        ],
+        "8": [
+          889,
+          821
+        ],
+        "9": [
+          886,
+          790
+        ],
+        "10": [
+          921,
+          854
+        ],
+        "11": [
+          920,
+          822
+        ],
+        "12": [
+          921,
+          791
+        ],
+        "13": [
+          954,
+          857
+        ],
+        "14": [
+          952,
+          825
+        ],
+        "15": [
+          957,
+          787
+        ],
+        "16": [
+          987,
+          858
+        ],
+        "17": [
+          992,
+          819
+        ],
+        "18": [
+          990,
+          788
+        ],
+        "19": [
+          1022,
+          854
+        ],
+        "20": [
+          1021,
+          822
+        ],
+        "21": [
+          1023,
+          790
+        ],
+        "22": [
+          1053,
+          859
+        ],
+        "23": [
+          1053,
+          821
+        ],
+        "24": [
+          1055,
+          791
+        ],
+        "25": [
+          1089,
+          857
+        ],
+        "26": [
+          1088,
+          824
+        ],
+        "27": [
+          1085,
+          792
+        ],
+        "28": [
+          1126,
+          850
+        ],
+        "29": [
+          1123,
+          820
+        ],
+        "30": [
+          1125,
+          790
+        ],
+        "31": [
+          1160,
+          855
+        ],
+        "32": [
+          1156,
+          825
+        ],
+        "33": [
+          1158,
+          788
+        ],
+        "34": [
+          1191,
+          858
+        ],
+        "35": [
+          1189,
+          822
+        ],
+        "36": [
+          1191,
+          791
+        ],
+        "red": [
+          970,
+          904
+        ],
+        "black": [
+          1040,
+          906
+        ],
+        "even": [
+          907,
+          905
+        ],
+        "odd": [
+          1111,
+          906
+        ]
+      },
+      "confirm_button": [
+        1044,
+        949
+      ],
+      "requires_amount_entry": false,
+      "chip_selection": [
+        1309,
+        947
+      ],
+      "human_delays": {
+        "min": 0.1,
+        "max": 0.5
+      }
+    },
+    "session": {
+      "maintenance_bet_interval": 1800,
+      "min_bet_amount": 1.0
+    },
+    "risk": {
+      "initial_balance": 1000.0,
+      "stop_loss": 500.0,
+      "guarantee_fund_percentage": 20
+    },
+    "logging": {
+      "logs_dir": "logs",
+      "log_level": "INFO"
+    }
+  },
+  "total_frames": 7662,
+  "processed_spins": 50,
+  "successful_detections": 50,
+  "bets_placed": 12,
+  "statistics": {
+    "total_spins": 50,
+    "total_bets": 12,
+    "wins": 4,
+    "losses": 8,
+    "win_rate": 33.33333333333333,
+    "total_profit": 160.0,
+    "total_loss": 120.0,
+    "net_profit": 40.0,
+    "initial_balance": 1000.0,
+    "final_balance": 1040.0,
+    "balance_change": 40.0
+  },
+  "results": [
+    {
+      "spin": 1,
+      "number": 33,
+      "even_streak": 0,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 2,
+      "number": 27,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 3,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 2,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 4,
+      "number": 8,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 5,
+      "number": 36,
+      "even_streak": 2,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 6,
+      "number": 8,
+      "even_streak": 3,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 7,
+      "number": 2,
+      "even_streak": 4,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 10.0,
+        "strategy": "even_odd",
+        "reason": "Entry triggered: 5 consecutive even \u2192 betting odd",
+        "cycle_number": 1,
+        "gale_step": 0,
+        "is_keepalive": false,
+        "streak_type": "even",
+        "streak_length": 5
+      },
+      "bet_outcome": null,
+      "in_cycle": true,
+      "gale_step": 0,
+      "balance": 1000.0
+    },
+    {
+      "spin": 8,
+      "number": 8,
+      "even_streak": 5,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 20.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 1 in cycle 1, betting odd after 1 losses",
+        "cycle_number": 1,
+        "gale_step": 1,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 1,
+      "balance": 990.0
+    },
+    {
+      "spin": 9,
+      "number": 2,
+      "even_streak": 6,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 40.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 2 in cycle 1, betting odd after 2 losses",
+        "cycle_number": 1,
+        "gale_step": 2,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 2,
+      "balance": 970.0
+    },
+    {
+      "spin": 10,
+      "number": 27,
+      "even_streak": 7,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": "win",
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 11,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 12,
+      "number": 25,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 13,
+      "number": 33,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 14,
+      "number": 27,
+      "even_streak": 0,
+      "odd_streak": 2,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 15,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 3,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 16,
+      "number": 8,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 17,
+      "number": 36,
+      "even_streak": 2,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 18,
+      "number": 8,
+      "even_streak": 3,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 19,
+      "number": 2,
+      "even_streak": 4,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 10.0,
+        "strategy": "even_odd",
+        "reason": "Entry triggered: 5 consecutive even \u2192 betting odd",
+        "cycle_number": 2,
+        "gale_step": 0,
+        "is_keepalive": false,
+        "streak_type": "even",
+        "streak_length": 5
+      },
+      "bet_outcome": null,
+      "in_cycle": true,
+      "gale_step": 0,
+      "balance": 1010.0
+    },
+    {
+      "spin": 20,
+      "number": 8,
+      "even_streak": 5,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 20.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 1 in cycle 2, betting odd after 1 losses",
+        "cycle_number": 2,
+        "gale_step": 1,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 1,
+      "balance": 1000.0
+    },
+    {
+      "spin": 21,
+      "number": 2,
+      "even_streak": 6,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 40.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 2 in cycle 2, betting odd after 2 losses",
+        "cycle_number": 2,
+        "gale_step": 2,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 2,
+      "balance": 980.0
+    },
+    {
+      "spin": 22,
+      "number": 27,
+      "even_streak": 7,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": "win",
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 23,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 24,
+      "number": 25,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 25,
+      "number": 33,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 26,
+      "number": 27,
+      "even_streak": 0,
+      "odd_streak": 2,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 27,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 3,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 28,
+      "number": 8,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 29,
+      "number": 36,
+      "even_streak": 2,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 30,
+      "number": 8,
+      "even_streak": 3,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 31,
+      "number": 2,
+      "even_streak": 4,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 10.0,
+        "strategy": "even_odd",
+        "reason": "Entry triggered: 5 consecutive even \u2192 betting odd",
+        "cycle_number": 3,
+        "gale_step": 0,
+        "is_keepalive": false,
+        "streak_type": "even",
+        "streak_length": 5
+      },
+      "bet_outcome": null,
+      "in_cycle": true,
+      "gale_step": 0,
+      "balance": 1020.0
+    },
+    {
+      "spin": 32,
+      "number": 8,
+      "even_streak": 5,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 20.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 1 in cycle 3, betting odd after 1 losses",
+        "cycle_number": 3,
+        "gale_step": 1,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 1,
+      "balance": 1010.0
+    },
+    {
+      "spin": 33,
+      "number": 2,
+      "even_streak": 6,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 40.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 2 in cycle 3, betting odd after 2 losses",
+        "cycle_number": 3,
+        "gale_step": 2,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 2,
+      "balance": 990.0
+    },
+    {
+      "spin": 34,
+      "number": 27,
+      "even_streak": 7,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": "win",
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 35,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 36,
+      "number": 25,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 37,
+      "number": 33,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 38,
+      "number": 27,
+      "even_streak": 0,
+      "odd_streak": 2,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 39,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 3,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 40,
+      "number": 8,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 41,
+      "number": 36,
+      "even_streak": 2,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 42,
+      "number": 8,
+      "even_streak": 3,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 43,
+      "number": 2,
+      "even_streak": 4,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 10.0,
+        "strategy": "even_odd",
+        "reason": "Entry triggered: 5 consecutive even \u2192 betting odd",
+        "cycle_number": 4,
+        "gale_step": 0,
+        "is_keepalive": false,
+        "streak_type": "even",
+        "streak_length": 5
+      },
+      "bet_outcome": null,
+      "in_cycle": true,
+      "gale_step": 0,
+      "balance": 1030.0
+    },
+    {
+      "spin": 44,
+      "number": 8,
+      "even_streak": 5,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 20.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 1 in cycle 4, betting odd after 1 losses",
+        "cycle_number": 4,
+        "gale_step": 1,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 1,
+      "balance": 1020.0
+    },
+    {
+      "spin": 45,
+      "number": 2,
+      "even_streak": 6,
+      "odd_streak": 0,
+      "bet_decision": {
+        "bet_type": "odd",
+        "bet_amount": 40.0,
+        "strategy": "even_odd",
+        "reason": "Gale step 2 in cycle 4, betting odd after 2 losses",
+        "cycle_number": 4,
+        "gale_step": 2,
+        "is_keepalive": false
+      },
+      "bet_outcome": "loss",
+      "in_cycle": true,
+      "gale_step": 2,
+      "balance": 1000.0
+    },
+    {
+      "spin": 46,
+      "number": 27,
+      "even_streak": 7,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": "win",
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1040.0
+    },
+    {
+      "spin": 47,
+      "number": 22,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1040.0
+    },
+    {
+      "spin": 48,
+      "number": 25,
+      "even_streak": 1,
+      "odd_streak": 0,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1040.0
+    },
+    {
+      "spin": 49,
+      "number": 33,
+      "even_streak": 0,
+      "odd_streak": 1,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1040.0
+    },
+    {
+      "spin": 50,
+      "number": 27,
+      "even_streak": 0,
+      "odd_streak": 2,
+      "bet_decision": null,
+      "bet_outcome": null,
+      "in_cycle": false,
+      "gale_step": 0,
+      "balance": 1040.0
+    }
+  ],
+  "final_balance": 1040.0,
+  "strategy_state": {
+    "even_streak": 0,
+    "odd_streak": 3,
+    "in_cycle": false,
+    "gale_step": 0
+  }
+}

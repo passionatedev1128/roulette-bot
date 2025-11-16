@@ -184,7 +184,16 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
         print("STRATEGY TEST STARTED")
         print("=" * 70)
         print(f"Video: {video_path}")
-        print(f"Strategy: {bot.strategy.strategy_type}")
+        
+        # Check if strategy navigation is enabled
+        if hasattr(bot, 'strategy_manager') and bot.strategy_manager:
+            print(f"Strategy Navigation: ENABLED")
+            print(f"Current Strategy: {bot.strategy_manager.current_strategy_name}")
+            print(f"Available Strategies: {', '.join(bot.strategy_manager.strategies.keys())}")
+        else:
+            print(f"Strategy Navigation: DISABLED")
+            print(f"Strategy: {bot.strategy.strategy_type}")
+        
         print(f"Base bet: {config.get('strategy', {}).get('base_bet', 10.0)}")
         print(f"Streak length: {config.get('strategy', {}).get('streak_length', 5)}")
         print(f"Max gales: {config.get('strategy', {}).get('max_gales', 5)}")
@@ -200,6 +209,13 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
     last_detected_number = None
     consecutive_no_detection = 0
     results = []
+    
+    # Track pending bets (bet placed but outcome not yet known)
+    pending_bet = None  # {bet_type, bet_amount, gale_step, spin_number}
+    wins = 0
+    losses = 0
+    total_profit = 0.0
+    total_loss = 0.0
     
     try:
         while True:
@@ -239,9 +255,15 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
             
             # Get strategy state before processing
             strategy = bot.strategy
-            even_streak = strategy.current_even_streak
-            odd_streak = strategy.current_odd_streak
-            in_cycle = strategy.cycle_active
+            # Update strategy reference if navigation is enabled
+            if hasattr(bot, 'strategy_manager') and bot.strategy_manager:
+                strategy = bot.strategy_manager.get_current_strategy()
+                bot.strategy = strategy  # Keep reference updated
+            
+            # Get strategy-specific state (for even_odd strategy)
+            even_streak = getattr(strategy, 'current_even_streak', 0)
+            odd_streak = getattr(strategy, 'current_odd_streak', 0)
+            in_cycle = getattr(strategy, 'cycle_active', False)
             gale_step = strategy.gale_step
             
             if verbose:
@@ -249,19 +271,115 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
                 print(f"\n[Spin {total_spins}] Number: {current_number} ({even_odd_str})")
                 print(f"  → Even streak: {even_streak}, Odd streak: {odd_streak}")
             
-            # Process spin (applies strategy)
+            # ⚠️ CRITICAL FIX: Check if pending bet won/lost BEFORE processing new result
+            bet_outcome = None
+            if pending_bet:
+                # Determine if pending bet won or lost
+                bet_type = pending_bet['bet_type']
+                bet_amount = pending_bet['bet_amount']
+                is_even = (current_number % 2 == 0 and current_number != 0)
+                is_odd = (current_number % 2 == 1)
+                is_zero = (current_number == 0)
+                
+                won = False
+                if bet_type == 'even' and is_even:
+                    won = True
+                elif bet_type == 'odd' and is_odd:
+                    won = True
+                elif is_zero:
+                    # Handle zero according to policy
+                    if strategy.zero_policy == 'count_as_loss':
+                        won = False
+                    elif strategy.zero_policy == 'count_as_win':
+                        won = True
+                    elif strategy.zero_policy == 'reset':
+                        # Reset cycle, don't count as win/loss
+                        strategy.cycle_active = False
+                        strategy.gale_step = 0
+                        pending_bet = None
+                        if verbose:
+                            print(f"  ⚠️  ZERO detected - Cycle reset (zero_policy: reset)")
+                        # Continue to process this result normally
+                        bet_outcome = None
+                
+                if bet_outcome is None and pending_bet:  # Not reset by zero
+                    # Process win/loss
+                    if won:
+                        bet_outcome = 'win'
+                        profit = bet_amount
+                        bot.current_balance += profit
+                        total_profit += profit
+                        wins += 1
+                        if verbose:
+                            print(f"  🎉 WIN! Bet {bet_type.upper()} won. Profit: +{profit:.2f}")
+                    else:
+                        bet_outcome = 'loss'
+                        loss = bet_amount
+                        bot.current_balance -= loss
+                        total_loss += loss
+                        losses += 1
+                        if verbose:
+                            print(f"  ❌ LOSS! Bet {bet_type.upper()} lost. Loss: -{loss:.2f}")
+                    
+                    # Update strategy after bet outcome (use strategy manager if enabled)
+                    bet_result_data = {
+                        'result': bet_outcome,
+                        'bet_type': bet_type,
+                        'bet_amount': bet_amount,
+                        'gale_step': pending_bet['gale_step'],
+                        'balance_after': bot.current_balance,
+                        'cycle_ended': False
+                    }
+                    
+                    if hasattr(bot, 'strategy_manager') and bot.strategy_manager:
+                        bot.strategy_manager.update_after_bet(bet_result_data)
+                        strategy = bot.strategy_manager.get_current_strategy()
+                        bot.strategy = strategy  # Update reference
+                    else:
+                        strategy.update_after_bet(bet_result_data)
+                    
+                    # Check if cycle ended
+                    if not getattr(strategy, 'cycle_active', False):
+                        if verbose:
+                            if bet_outcome == 'win':
+                                print(f"  ✅ Cycle {pending_bet.get('cycle_number', '?')} ended: WIN")
+                            else:
+                                print(f"  ⚠️  Cycle {pending_bet.get('cycle_number', '?')} ended: MAX GALE")
+                    
+                    # Clear pending bet
+                    pending_bet = None
+            
+            # Now process the new result for strategy decisions
             try:
                 spin_result = bot.process_spin(detection)
                 
-                # Check if bet was placed
-                bet_decision = spin_result.get('bet_decision')
-                if bet_decision:
-                    bets_placed += 1
-                    bet_type = bet_decision.get('bet_type')
-                    bet_amount = bet_decision.get('bet_amount', 0.0)
-                    
-                    if verbose:
-                        print(f"  ✅ BET DECISION: {bet_type.upper()} - {bet_amount} (Gale step: {gale_step})")
+                   # Check if bet was placed
+                   bet_decision = spin_result.get('bet_decision')
+                   if bet_decision:
+                       bets_placed += 1
+                       bet_type = bet_decision.get('bet_type')
+                       bet_amount = bet_decision.get('bet_amount', 0.0)
+                       
+                       # Check for strategy switch (if navigation enabled)
+                       if hasattr(bot, 'strategy_manager') and bot.strategy_manager:
+                           current_strategy_name = bot.strategy_manager.current_strategy_name
+                           if verbose and bet_decision.get('strategy') != current_strategy_name:
+                               print(f"  🔄 Strategy: {current_strategy_name}")
+                       
+                       # Store as pending bet (will be resolved on next result)
+                       pending_bet = {
+                           'bet_type': bet_type,
+                           'bet_amount': bet_amount,
+                           'gale_step': bet_decision.get('gale_step', 0),
+                           'cycle_number': bet_decision.get('cycle_number', 0),
+                           'spin_number': total_spins
+                       }
+                       
+                       if verbose:
+                           if bet_decision.get('reason', '').startswith('Entry'):
+                               print(f"  ✅ ENTRY! Betting {bet_type.upper()} - {bet_amount} (Gale step: {gale_step})")
+                           else:
+                               print(f"  📊 BET: {bet_type.upper()} - {bet_amount} (Gale step: {gale_step})")
                 
                 # Store result
                 results.append({
@@ -270,14 +388,17 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
                     "even_streak": even_streak,
                     "odd_streak": odd_streak,
                     "bet_decision": bet_decision,
-                    "in_cycle": in_cycle,
-                    "gale_step": gale_step,
+                    "bet_outcome": bet_outcome,  # 'win', 'loss', or None
+                    "in_cycle": strategy.cycle_active,  # Use updated state
+                    "gale_step": strategy.gale_step,  # Use updated state
                     "balance": bot.current_balance
                 })
                 
             except Exception as e:
                 if verbose:
                     print(f"  ⚠️  Error processing spin: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
             
             # Check stop conditions
@@ -286,10 +407,27 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
                     print("\n⚠️  Stop conditions met (stop loss or max gale reached)")
                 break
         
-        # Final statistics
-        stats = bot.logger.get_statistics() if hasattr(bot.logger, 'get_statistics') else {}
+        # Calculate final statistics
+        win_rate = (wins / bets_placed * 100) if bets_placed > 0 else 0
+        net_profit = total_profit - total_loss
+        balance_change = bot.current_balance - bot.config.get('risk', {}).get('initial_balance', 1000.0)
+        
+        stats = {
+            "total_spins": total_spins,
+            "total_bets": bets_placed,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "total_profit": total_profit,
+            "total_loss": total_loss,
+            "net_profit": net_profit,
+            "initial_balance": bot.config.get('risk', {}).get('initial_balance', 1000.0),
+            "final_balance": bot.current_balance,
+            "balance_change": balance_change
+        }
         
         # Save results
+        import json
         os.makedirs('test_results', exist_ok=True)
         output_file = f"test_results/strategy_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         with open(output_file, 'w') as f:
@@ -311,20 +449,40 @@ def test_strategy_colab(video_path, config_path='config/default_config.json',
                 }
             }, f, indent=2)
         
-        if verbose:
-            print("\n" + "=" * 70)
-            print("STRATEGY TEST SUMMARY")
-            print("=" * 70)
-            print(f"Total spins processed: {total_spins}")
-            print(f"Successful detections: {successful_detections}")
-            print(f"Bets placed: {bets_placed}")
-            print(f"Current balance: {bot.current_balance:.2f}")
-            print(f"Even streak: {strategy.current_even_streak}")
-            print(f"Odd streak: {strategy.current_odd_streak}")
-            print(f"In cycle: {strategy.cycle_active}")
-            print(f"Gale step: {strategy.gale_step}")
-            print(f"Results saved to: {output_file}")
-            print("=" * 70)
+               if verbose:
+                   print("\n" + "=" * 70)
+                   print("STRATEGY TEST SUMMARY")
+                   print("=" * 70)
+                   print(f"Total spins processed: {total_spins}")
+                   print(f"Successful detections: {successful_detections}")
+                   print(f"Bets placed: {bets_placed}")
+                   print(f"Wins: {wins} | Losses: {losses}")
+                   print(f"Win rate: {win_rate:.2f}%")
+                   print(f"Total profit: {total_profit:.2f}")
+                   print(f"Total loss: {total_loss:.2f}")
+                   print(f"Net profit: {net_profit:.2f}")
+                   print(f"Initial balance: {stats['initial_balance']:.2f}")
+                   print(f"Final balance: {bot.current_balance:.2f}")
+                   print(f"Balance change: {balance_change:.2f}")
+                   
+                   # Show strategy navigation info if enabled
+                   if hasattr(bot, 'strategy_manager') and bot.strategy_manager:
+                       print(f"\nStrategy Navigation:")
+                       print(f"  Current Strategy: {bot.strategy_manager.current_strategy_name}")
+                       all_perf = bot.strategy_manager.get_all_performance()
+                       for name, perf in all_perf.items():
+                           print(f"  {name}: {perf['total_bets']} bets, "
+                                 f"WR: {perf['win_rate']:.1f}%, "
+                                 f"Score: {perf['score']:.3f}")
+                   else:
+                       # Show single strategy state
+                       print(f"Even streak: {getattr(strategy, 'current_even_streak', 0)}")
+                       print(f"Odd streak: {getattr(strategy, 'current_odd_streak', 0)}")
+                       print(f"In cycle: {getattr(strategy, 'cycle_active', False)}")
+                       print(f"Gale step: {strategy.gale_step}")
+                   
+                   print(f"Results saved to: {output_file}")
+                   print("=" * 70)
         
         return {
             "results": results,

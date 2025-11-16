@@ -203,6 +203,9 @@ class EvenOddStrategy(StrategyBase):
                 self.cycle_active = False
                 return None
             
+            # Get current streak length for chip selection
+            current_streak = max(self.current_even_streak, self.current_odd_streak)
+            
             return {
                 "bet_type": bet_type,
                 "bet_amount": bet_amount,
@@ -211,6 +214,7 @@ class EvenOddStrategy(StrategyBase):
                          f"betting {bet_type} after {self.consecutive_losses} losses",
                 "cycle_number": self.cycle_number,
                 "gale_step": self.gale_step,
+                "streak_length": current_streak,  # Include for chip selection
                 "is_keepalive": False
             }
         

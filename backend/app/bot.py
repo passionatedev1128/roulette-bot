@@ -12,6 +12,7 @@ from pathlib import Path
 from .detection import ScreenDetector
 from .detection.game_state_detector import GameStateDetector, GameState
 from .strategy import StrategyBase, MartingaleStrategy, FibonacciStrategy, CustomStrategy, EvenOddStrategy
+from .strategy.strategy_manager import StrategyManager
 from .betting import BetController
 from .logging import RouletteLogger
 from .config_loader import ConfigLoader
@@ -40,7 +41,18 @@ class RouletteBot:
         
         # Initialize modules
         self.detector = ScreenDetector(self.config)
-        self.strategy = self._create_strategy()
+        
+        # Use StrategyManager if navigation is enabled, otherwise use single strategy
+        strategy_nav_config = self.config.get('strategy_navigation', {})
+        if strategy_nav_config.get('enabled', False):
+            self.strategy_manager = StrategyManager(self.config)
+            self.strategy = self.strategy_manager.get_current_strategy()
+            logger.info("Strategy navigation enabled - using StrategyManager")
+        else:
+            self.strategy = self._create_strategy()
+            self.strategy_manager = None
+            logger.info("Strategy navigation disabled - using single strategy")
+        
         self.bet_controller = BetController(self.config)
         self.logger = RouletteLogger(self.config)
         
@@ -220,19 +232,34 @@ class RouletteBot:
             zero_handling = self.strategy.handle_zero(self.result_history, self.current_balance)
             logger.info(f"Zero detected, handling: {zero_handling}")
         
-        # Calculate bet
-        bet_decision = self.strategy.calculate_bet(
-            self.result_history,
-            self.current_balance,
-            result
-        )
+        # Calculate bet (use strategy manager if enabled)
+        if self.strategy_manager:
+            bet_decision = self.strategy_manager.calculate_bet(
+                self.result_history,
+                self.current_balance,
+                result
+            )
+            # Update current strategy reference
+            self.strategy = self.strategy_manager.get_current_strategy()
+        else:
+            bet_decision = self.strategy.calculate_bet(
+                self.result_history,
+                self.current_balance,
+                result
+            )
         
         # Place bet if decision made
         bet_result = None
         if bet_decision:
+            # Extract streak and gale info for adaptive chip selection
+            streak_length = bet_decision.get('streak_length')
+            gale_step = bet_decision.get('gale_step', self.strategy.gale_step)
+            
             bet_result = self.bet_controller.place_bet(
                 bet_decision['bet_type'],
-                bet_decision['bet_amount']
+                bet_decision['bet_amount'],
+                streak_length=streak_length,
+                gale_step=gale_step
             )
             
             if bet_result['success']:
@@ -387,11 +414,21 @@ class RouletteBot:
             self.losing_rounds += 1
         
         # Update strategy
-        self.strategy.update_after_bet({
+        # Update strategy (use strategy manager if enabled)
+        bet_result_data = {
             "result": result,
             "balance_after": self.current_balance,
-            "profit_loss": profit
-        })
+            "profit_loss": profit,
+            "bet_amount": bet_amount,
+            "cycle_ended": False  # Can be set based on strategy state
+        }
+        
+        if self.strategy_manager:
+            self.strategy_manager.update_after_bet(bet_result_data)
+            # Update current strategy reference
+            self.strategy = self.strategy_manager.get_current_strategy()
+        else:
+            self.strategy.update_after_bet(bet_result_data)
         
         # Reset bet controller
         self.bet_controller.reset_bet_flag()
