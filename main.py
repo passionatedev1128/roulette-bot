@@ -35,15 +35,12 @@ def main():
     
     try:
         # Initialize bot
-        bot = RouletteBot(str(config_path))
+        bot = RouletteBot(str(config_path), test_mode=args.test)
         
         # Run bot
         if args.test:
-            print("Running in test mode...")
-            # Test mode would run with simulated results
-            # Implementation would go here
-        else:
-            bot.run()
+            print("Running in test mode (no real bets will be placed)...")
+        bot.run()
             
     except Exception as e:
         print(f"Error: {e}")

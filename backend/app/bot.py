@@ -12,12 +12,56 @@ from pathlib import Path
 from .detection import ScreenDetector
 from .detection.game_state_detector import GameStateDetector, GameState
 from .strategy import StrategyBase, MartingaleStrategy, FibonacciStrategy, CustomStrategy, EvenOddStrategy
-from .strategy.strategy_manager import StrategyManager
 from .betting import BetController
 from .logging import RouletteLogger
 from .config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_required_bankroll(base_bet: float, max_gales: int, multiplier: float = 2.0) -> Dict:
+    """
+    Calculate the maximum required bankroll for a given strategy configuration.
+    
+    This is an informational pre-check to estimate the maximum bankroll needed
+    if all gales in a cycle are used (worst-case scenario).
+    
+    Args:
+        base_bet: Base stake amount
+        max_gales: Maximum number of gales allowed
+        multiplier: Multiplier for gale progression (default: 2.0 for doubling)
+        
+    Returns:
+        Dictionary with bankroll information:
+        {
+            "base_bet": float,
+            "max_gales": int,
+            "multiplier": float,
+            "gale_sequence": List[float],  # Bet amounts for each gale step
+            "total_required": float,  # Sum of all bets in worst-case cycle
+            "recommended_bankroll": float  # Recommended bankroll (total + buffer)
+        }
+    """
+    gale_sequence = []
+    total = 0.0
+    
+    for step in range(max_gales + 1):  # Include initial bet (step 0)
+        bet_amount = base_bet * (multiplier ** step)
+        gale_sequence.append(bet_amount)
+        total += bet_amount
+    
+    # Recommended bankroll includes a 20% buffer for safety
+    recommended = total * 1.2
+    
+    return {
+        "base_bet": base_bet,
+        "max_gales": max_gales,
+        "multiplier": multiplier,
+        "gale_sequence": gale_sequence,
+        "total_required": round(total, 2),
+        "recommended_bankroll": round(recommended, 2),
+        "note": "This is the worst-case scenario if all gales are used in a single cycle"
+    }
 
 
 class RouletteBot:
@@ -41,18 +85,7 @@ class RouletteBot:
         
         # Initialize modules
         self.detector = ScreenDetector(self.config)
-        
-        # Use StrategyManager if navigation is enabled, otherwise use single strategy
-        strategy_nav_config = self.config.get('strategy_navigation', {})
-        if strategy_nav_config.get('enabled', False):
-            self.strategy_manager = StrategyManager(self.config)
-            self.strategy = self.strategy_manager.get_current_strategy()
-            logger.info("Strategy navigation enabled - using StrategyManager")
-        else:
-            self.strategy = self._create_strategy()
-            self.strategy_manager = None
-            logger.info("Strategy navigation disabled - using single strategy")
-        
+        self.strategy = self._create_strategy()
         self.bet_controller = BetController(self.config)
         self.logger = RouletteLogger(self.config)
         
@@ -74,6 +107,8 @@ class RouletteBot:
         # Stop conditions tracking
         self.winning_rounds = 0
         self.losing_rounds = 0
+        self.keepalive_bets_count = 0
+        self.stop_trigger_info = None  # Track which stop condition was triggered
         
         # Events / callbacks
         self.event_dispatcher = event_dispatcher
@@ -82,6 +117,19 @@ class RouletteBot:
 
         # Setup logging
         self._setup_logging()
+        
+        # Log bankroll information (informational only)
+        if isinstance(self.strategy, EvenOddStrategy):
+            bankroll_info = calculate_required_bankroll(
+                self.strategy.base_bet,
+                self.strategy.max_gales,
+                self.strategy.multiplier
+            )
+            logger.info(
+                f"Bankroll estimate: Required={bankroll_info['total_required']}, "
+                f"Recommended={bankroll_info['recommended_bankroll']} "
+                f"(base_bet={self.strategy.base_bet}, max_gales={self.strategy.max_gales})"
+            )
         
         logger.info("RouletteBot initialized")
         if self.test_mode:
@@ -191,7 +239,8 @@ class RouletteBot:
                 
                 if bet_result['success']:
                     self.last_maintenance_bet_time = time.time()
-                    logger.info(f"Keepalive bet placed: {keepalive_bet['bet_amount']} on {keepalive_bet['bet_type']}")
+                    self.keepalive_bets_count += 1
+                    logger.info(f"Keepalive bet placed: {keepalive_bet['bet_amount']} on {keepalive_bet['bet_type']} (total keepalive bets: {self.keepalive_bets_count})")
                 else:
                     logger.warning(f"Keepalive bet failed: {bet_result.get('error')}")
             else:
@@ -232,34 +281,19 @@ class RouletteBot:
             zero_handling = self.strategy.handle_zero(self.result_history, self.current_balance)
             logger.info(f"Zero detected, handling: {zero_handling}")
         
-        # Calculate bet (use strategy manager if enabled)
-        if self.strategy_manager:
-            bet_decision = self.strategy_manager.calculate_bet(
-                self.result_history,
-                self.current_balance,
-                result
-            )
-            # Update current strategy reference
-            self.strategy = self.strategy_manager.get_current_strategy()
-        else:
-            bet_decision = self.strategy.calculate_bet(
-                self.result_history,
-                self.current_balance,
-                result
-            )
+        # Calculate bet
+        bet_decision = self.strategy.calculate_bet(
+            self.result_history,
+            self.current_balance,
+            result
+        )
         
         # Place bet if decision made
         bet_result = None
         if bet_decision:
-            # Extract streak and gale info for adaptive chip selection
-            streak_length = bet_decision.get('streak_length')
-            gale_step = bet_decision.get('gale_step', self.strategy.gale_step)
-            
             bet_result = self.bet_controller.place_bet(
                 bet_decision['bet_type'],
-                bet_decision['bet_amount'],
-                streak_length=streak_length,
-                gale_step=gale_step
+                bet_decision['bet_amount']
             )
             
             if bet_result['success']:
@@ -295,19 +329,42 @@ class RouletteBot:
             else:
                 bet_category = "strategy"
         
+        # Get table name from config
+        table_name = self.config.get('table', {}).get('name', 'Roleta Brasileira')
+        
+        # Get cycle and streak info from strategy if available
+        cycle_number = None
+        streak_length = None
+        is_keepalive = False
+        
+        if isinstance(self.strategy, EvenOddStrategy):
+            # Get cycle number - use from bet_decision if available, otherwise from strategy
+            if bet_decision and bet_decision.get('cycle_number') is not None:
+                cycle_number = bet_decision.get('cycle_number')
+            else:
+                cycle_number = self.strategy.cycle_number if self.strategy.cycle_active else None
+            streak_length = max(self.strategy.current_even_streak, self.strategy.current_odd_streak)
+            if bet_decision:
+                is_keepalive = bet_decision.get('is_keepalive', False)
+        
         spin_data = {
             "spin_number": self.spin_number,
+            "table": table_name,
             "outcome_number": result.get('number'),
             "outcome_color": result.get('color'),
             "bet_category": bet_category,
             "bet_color": bet_color,
             "bet_amount": bet_decision.get('bet_amount') if bet_decision else 0.0,
+            "stake": bet_decision.get('bet_amount') if bet_decision else 0.0,  # Same as bet_amount for now
             "balance_before": self.current_balance,
             "balance_after": self.current_balance,  # Will be updated after round
             "result": "pending",  # Will be updated after round completes
             "profit_loss": 0.0,
             "strategy": self.strategy.strategy_type,
+            "cycle_number": cycle_number,
             "gale_step": self.strategy.gale_step,
+            "streak_length": streak_length,
+            "is_keepalive": is_keepalive,
             "detection_confidence": result.get('confidence', 0.0),
             "detection_method": result.get('method', 'unknown'),
             "errors": None
@@ -414,21 +471,11 @@ class RouletteBot:
             self.losing_rounds += 1
         
         # Update strategy
-        # Update strategy (use strategy manager if enabled)
-        bet_result_data = {
+        self.strategy.update_after_bet({
             "result": result,
             "balance_after": self.current_balance,
-            "profit_loss": profit,
-            "bet_amount": bet_amount,
-            "cycle_ended": False  # Can be set based on strategy state
-        }
-        
-        if self.strategy_manager:
-            self.strategy_manager.update_after_bet(bet_result_data)
-            # Update current strategy reference
-            self.strategy = self.strategy_manager.get_current_strategy()
-        else:
-            self.strategy.update_after_bet(bet_result_data)
+            "profit_loss": profit
+        })
         
         # Reset bet controller
         self.bet_controller.reset_bet_flag()
@@ -461,12 +508,24 @@ class RouletteBot:
         stop_loss_money = risk_config.get('stop_loss', 0.0)
         if stop_loss_money > 0 and self.current_balance <= stop_loss_money:
             logger.warning(f"StopLoss (money) reached: balance={self.current_balance}, stop_loss={stop_loss_money}")
+            self.stop_trigger_info = {
+                "triggered": True,
+                "type": "stop_loss_money",
+                "value": self.current_balance,
+                "threshold": stop_loss_money
+            }
             return True
         
         # StopLoss by count
         stop_loss_count = risk_config.get('stop_loss_count', None)
         if stop_loss_count is not None and self.losing_rounds >= stop_loss_count:
             logger.warning(f"StopLoss (count) reached: losing_rounds={self.losing_rounds}, threshold={stop_loss_count}")
+            self.stop_trigger_info = {
+                "triggered": True,
+                "type": "stop_loss_count",
+                "value": self.losing_rounds,
+                "threshold": stop_loss_count
+            }
             return True
         
         # StopWin by money
@@ -475,12 +534,24 @@ class RouletteBot:
             net_pnl = self.current_balance - self.initial_balance
             if net_pnl >= stop_win_money:
                 logger.warning(f"StopWin (money) reached: net_pnl={net_pnl}, stop_win={stop_win_money}")
+                self.stop_trigger_info = {
+                    "triggered": True,
+                    "type": "stop_win_money",
+                    "value": net_pnl,
+                    "threshold": stop_win_money
+                }
                 return True
         
         # StopWin by count
         stop_win_count = risk_config.get('stop_win_count', None)
         if stop_win_count is not None and self.winning_rounds >= stop_win_count:
             logger.warning(f"StopWin (count) reached: winning_rounds={self.winning_rounds}, threshold={stop_win_count}")
+            self.stop_trigger_info = {
+                "triggered": True,
+                "type": "stop_win_count",
+                "value": self.winning_rounds,
+                "threshold": stop_win_count
+            }
             return True
         
         # Max gale reached (only stop if not in a cycle that should complete)
@@ -568,7 +639,16 @@ class RouletteBot:
         stats = self.logger.get_statistics()
         logger.info(f"Final statistics: {stats}")
         
-        # Export summary
-        self.logger.export_summary()
+        # Prepare stop trigger info if not already set (manual stop)
+        if self.stop_trigger_info is None:
+            self.stop_trigger_info = {
+                "triggered": True,
+                "type": "manual",
+                "value": None,
+                "threshold": None
+            }
+        
+        # Export summary with stop trigger info
+        self.logger.export_summary(stop_triggers=self.stop_trigger_info)
         self._emit_event("status_change", {"status": "idle"})
 

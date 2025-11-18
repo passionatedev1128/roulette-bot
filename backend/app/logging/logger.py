@@ -46,18 +46,23 @@ class RouletteLogger:
         """Initialize CSV file with headers."""
         self.csv_headers = [
             'timestamp',
+            'table',
             'spin_number',
             'outcome_number',
             'outcome_color',
             'bet_category',
             'bet_color',
             'bet_amount',
+            'stake',
             'balance_before',
             'balance_after',
             'result',
             'profit_loss',
             'strategy',
+            'cycle_number',
             'gale_step',
+            'streak_length',
+            'is_keepalive',
             'detection_confidence',
             'detection_method',
             'errors'
@@ -167,12 +172,38 @@ class RouletteLogger:
             df = pd.read_csv(self.csv_file)
             
             total_spins = len(df)
-            total_bets = len(df[df['bet_type'].notna()])
+            total_bets = len(df[df['bet_amount'].notna() & (df['bet_amount'] > 0)])
             wins = len(df[df['result'] == 'win'])
             losses = len(df[df['result'] == 'loss'])
             
             win_rate = (wins / total_bets * 100) if total_bets > 0 else 0
             total_profit_loss = df['profit_loss'].sum() if 'profit_loss' in df.columns else 0
+            
+            # Calculate cycles
+            cycle_numbers = df['cycle_number'].dropna().unique() if 'cycle_number' in df.columns else []
+            total_cycles = len(cycle_numbers)
+            
+            # Calculate keepalive bets
+            if 'is_keepalive' in df.columns:
+                keepalive_count = len(df[df['is_keepalive'] == True])
+            else:
+                keepalive_count = 0
+            
+            # Calculate winning and losing cycles
+            cycles_won = 0
+            cycles_lost = 0
+            if 'cycle_number' in df.columns and 'result' in df.columns:
+                for cycle_num in cycle_numbers:
+                    cycle_data = df[df['cycle_number'] == cycle_num]
+                    if len(cycle_data[cycle_data['result'] == 'win']) > 0:
+                        cycles_won += 1
+                    elif len(cycle_data[cycle_data['result'] == 'loss']) > 0:
+                        # Check if max gale was reached (last bet in cycle was a loss)
+                        last_bet = cycle_data.iloc[-1] if len(cycle_data) > 0 else None
+                        if last_bet is not None and last_bet.get('result') == 'loss':
+                            max_gale = cycle_data['gale_step'].max() if 'gale_step' in cycle_data.columns else 0
+                            if max_gale > 0:  # Had at least one gale
+                                cycles_lost += 1
             
             return {
                 "total_spins": int(total_spins),
@@ -181,18 +212,29 @@ class RouletteLogger:
                 "losses": int(losses),
                 "win_rate": round(win_rate, 2),
                 "total_profit_loss": round(total_profit_loss, 2),
-                "average_bet": round(df['bet_amount'].mean(), 2) if 'bet_amount' in df.columns else 0
+                "average_bet": round(df['bet_amount'].mean(), 2) if 'bet_amount' in df.columns and len(df[df['bet_amount'].notna()]) > 0 else 0,
+                "total_cycles": int(total_cycles),
+                "cycles_won": int(cycles_won),
+                "cycles_lost": int(cycles_lost),
+                "keepalive_bets": int(keepalive_count)
             }
         except Exception as e:
             logger.error(f"Error calculating statistics: {e}")
             return {}
     
-    def export_summary(self, output_file: Optional[str] = None) -> str:
+    def export_summary(self, output_file: Optional[str] = None, stop_triggers: Optional[Dict] = None) -> str:
         """
         Export summary report.
         
         Args:
             output_file: Optional output file path
+            stop_triggers: Optional dictionary with stop condition information:
+                {
+                    "triggered": bool,
+                    "type": str ("stop_loss_money", "stop_loss_count", "stop_win_money", "stop_win_count", "manual"),
+                    "value": float or int,
+                    "threshold": float or int
+                }
             
         Returns:
             Path to exported file
@@ -201,8 +243,37 @@ class RouletteLogger:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = self.logs_dir / f"summary_{timestamp}.json"
         
+        stats = self.get_statistics()
+        
         summary = {
-            "statistics": self.get_statistics(),
+            "session_info": {
+                "start_time": self.json_logs[0].get('timestamp') if self.json_logs else None,
+                "end_time": datetime.now().isoformat(),
+                "total_spins": stats.get("total_spins", 0),
+                "total_bets": stats.get("total_bets", 0)
+            },
+            "statistics": stats,
+            "cycles": {
+                "total_cycles": stats.get("total_cycles", 0),
+                "cycles_won": stats.get("cycles_won", 0),
+                "cycles_lost": stats.get("cycles_lost", 0)
+            },
+            "performance": {
+                "wins": stats.get("wins", 0),
+                "losses": stats.get("losses", 0),
+                "win_rate": stats.get("win_rate", 0),
+                "net_pnl": stats.get("total_profit_loss", 0),
+                "average_bet": stats.get("average_bet", 0)
+            },
+            "keepalive": {
+                "total_keepalive_bets": stats.get("keepalive_bets", 0)
+            },
+            "stop_conditions": stop_triggers if stop_triggers else {
+                "triggered": False,
+                "type": None,
+                "value": None,
+                "threshold": None
+            },
             "log_files": {
                 "csv": str(self.csv_file),
                 "json": str(self.json_file),

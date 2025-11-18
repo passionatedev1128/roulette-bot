@@ -1,70 +1,19 @@
 {
   "detection": {
   "screen_region": [953, 511, 57, 55],
-  "winning_templates_dir": "winning-numbers/",
-  "winning_template_threshold": 0.65,
-  "enable_ocr_fallback": false,
-  "ocr_confidence_threshold": 70.0,
-  "ocr_only_if_no_templates": true
+  "winning_templates_dir": "winning-number_templates/",
+  "winning_template_threshold": 0.65
   },
   "strategy": {
     "type": "even_odd",
     "base_bet": 10.0,
-    "max_gales": 3,
+    "max_gales": 5,
     "multiplier": 2.0,
-    "streak_length": 6,
+    "streak_length": 5,
     "zero_policy": "count_as_loss",
     "keepalive_stake": 1.0
   },
-  "strategy_navigation": {
-    "enabled": false,
-    "initial_strategy": "even_odd",
-    "evaluation_interval": 10,
-    "min_bets_before_switch": 5,
-    "switch_threshold": 0.15
-  },
-  "strategies": {
-    "even_odd": {
-      "type": "even_odd",
-      "base_bet": 10.0,
-      "max_gales": 3,
-      "multiplier": 2.0,
-      "streak_length": 6,
-      "zero_policy": "count_as_loss",
-      "keepalive_stake": 1.0
-    },
-    "martingale": {
-      "type": "martingale",
-      "base_bet": 10.0,
-      "max_gales": 5,
-      "multiplier": 2.0
-    },
-    "fibonacci": {
-      "type": "fibonacci",
-      "base_bet": 10.0,
-      "max_gales": 8
-    }
-  },
   "betting": {
-    "adaptive_chip_selection": true,
-    "chip_sizes": [0.5, 1.0, 2.5, 5.0, 10.0],
-    "chip_selection_rules": {
-      "entry_streak_6": 1.0,
-      "entry_streak_7": 2.5,
-      "entry_streak_8": 5.0,
-      "entry_streak_9+": 10.0,
-      "gale_step_0": 1.0,
-      "gale_step_1": 2.5,
-      "gale_step_2": 5.0,
-      "gale_step_3": 10.0
-    },
-    "chip_selection_coordinates": {
-      "0.5": [1309, 947],
-      "1.0": [1309, 947],
-      "2.5": [1309, 947],
-      "5.0": [1309, 947],
-      "10.0": [1309, 947]
-    },
     "betting_areas": {
     "0": [786, 825],
     "1": [818, 858],
@@ -110,10 +59,15 @@
     },
     "confirm_button": [1044, 949],
     "requires_amount_entry": false,
+    "chip_selection": [1309, 947],
     "human_delays": {
       "min": 0.1,
       "max": 0.5
     }
+  },
+  "table": {
+    "name": "Roleta Brasileira",
+    "provider": "To be confirmed"
   },
   "session": {
     "maintenance_bet_interval": 1800,
@@ -121,8 +75,7 @@
   },
   "risk": {
     "initial_balance": 1000.0,
-    "stop_loss": 100.0,
-    "stop_win": 1000.0,
+    "stop_loss": 500.0,
     "guarantee_fund_percentage": 20
   },
   "logging": {

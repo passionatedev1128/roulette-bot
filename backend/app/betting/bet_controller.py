@@ -29,12 +29,6 @@ class BetController:
         self.betting_areas = self.betting_config.get('betting_areas', {})
         self.human_delays = self.betting_config.get('human_delays', {'min': 0.1, 'max': 0.5})
         
-        # Adaptive chip selection
-        self.adaptive_chip_selection = self.betting_config.get('adaptive_chip_selection', False)
-        self.chip_sizes = self.betting_config.get('chip_sizes', [0.5, 1.0, 2.5, 5.0, 10.0])
-        self.chip_rules = self.betting_config.get('chip_selection_rules', {})
-        self.chip_coords = self.betting_config.get('chip_selection_coordinates', {})
-        
         # State tracking
         self.last_bet_time = None
         self.bet_placed_flag = False
@@ -45,8 +39,6 @@ class BetController:
         pyautogui.FAILSAFE = True  # Enable failsafe (move mouse to corner to stop)
         
         logger.info("BetController initialized")
-        if self.adaptive_chip_selection:
-            logger.info("Adaptive chip selection enabled")
     
     def _random_delay(self):
         """Add random human-like delay."""
@@ -152,96 +144,6 @@ class BetController:
             logger.error(f"Error confirming bet: {e}")
             raise
     
-    def select_chip(self, bet_amount: float, streak_length: Optional[int] = None, 
-                    gale_step: Optional[int] = None) -> Tuple[float, Optional[Tuple[int, int]]]:
-        """
-        Select appropriate chip size based on bet amount, streak length, and gale step.
-        
-        Args:
-            bet_amount: Desired bet amount
-            streak_length: Current streak length (for entry bets)
-            gale_step: Current gale step (0 = entry, 1+ = gale progression)
-            
-        Returns:
-            Tuple of (selected_chip_value, chip_coordinates) or (bet_amount, None) if no chip selection
-        """
-        if not self.adaptive_chip_selection:
-            # If adaptive selection disabled, return bet_amount as-is
-            return bet_amount, None
-        
-        # Determine chip size based on rules
-        chip_value = None
-        
-        # Priority 1: Gale step rules (for recovery bets)
-        if gale_step is not None:
-            if gale_step == 0:
-                chip_value = self.chip_rules.get('gale_step_0')
-            elif gale_step == 1:
-                chip_value = self.chip_rules.get('gale_step_1')
-            elif gale_step == 2:
-                chip_value = self.chip_rules.get('gale_step_2')
-            elif gale_step >= 3:
-                chip_value = self.chip_rules.get('gale_step_3')
-        
-        # Priority 2: Streak length rules (for entry bets)
-        if chip_value is None and streak_length is not None:
-            if streak_length == 6:
-                chip_value = self.chip_rules.get('entry_streak_6')
-            elif streak_length == 7:
-                chip_value = self.chip_rules.get('entry_streak_7')
-            elif streak_length == 8:
-                chip_value = self.chip_rules.get('entry_streak_8')
-            elif streak_length >= 9:
-                chip_value = self.chip_rules.get('entry_streak_9+')
-        
-        # Fallback: Find closest chip size to bet_amount
-        if chip_value is None:
-            # Find closest chip size
-            chip_value = min(self.chip_sizes, key=lambda x: abs(x - bet_amount))
-            # Ensure chip is not larger than bet_amount
-            if chip_value > bet_amount:
-                chip_value = max([c for c in self.chip_sizes if c <= bet_amount], default=self.chip_sizes[0])
-        
-        # Get chip coordinates
-        chip_coords = None
-        if chip_value in self.chip_coords:
-            coords = self.chip_coords[chip_value]
-            if isinstance(coords, list) and len(coords) >= 2:
-                chip_coords = (coords[0], coords[1])
-        
-        # Calculate number of chips needed
-        num_chips = int(bet_amount / chip_value) if chip_value > 0 else 1
-        actual_bet = chip_value * num_chips
-        
-        logger.debug(
-            f"Chip selection: bet_amount={bet_amount}, chip_value={chip_value}, "
-            f"num_chips={num_chips}, actual_bet={actual_bet}, "
-            f"streak={streak_length}, gale_step={gale_step}"
-        )
-        
-        return chip_value, chip_coords
-    
-    def select_chip_and_place(self, chip_value: float, chip_coords: Optional[Tuple[int, int]], 
-                              num_chips: int):
-        """
-        Select chip and place it on betting area.
-        
-        Args:
-            chip_value: Chip value to select
-            chip_coords: Coordinates of chip selection area
-            num_chips: Number of chips to place
-        """
-        if chip_coords:
-            # Click on chip selection area
-            self.click_with_delay(chip_coords[0], chip_coords[1])
-            self._random_delay()
-            logger.debug(f"Selected chip: {chip_value}")
-        
-        # If multiple chips needed, click multiple times
-        # (This depends on platform - some require selecting chip then clicking betting area multiple times)
-        # For now, we'll assume one click per chip
-        return num_chips
-    
     def verify_bet_placed(self, timeout: int = 5) -> bool:
         """
         Verify that bet was placed successfully.
@@ -267,9 +169,7 @@ class BetController:
             logger.warning(f"Error verifying bet: {e}")
             return False
     
-    def place_bet(self, bet_type: str, bet_amount: float, 
-                  streak_length: Optional[int] = None,
-                  gale_step: Optional[int] = None) -> Dict:
+    def place_bet(self, bet_type: str, bet_amount: float) -> Dict:
         """
         Place a bet on the table.
         
@@ -311,31 +211,13 @@ class BetController:
             
             x, y = betting_coords
             
-            # Select chip if adaptive selection enabled
-            chip_value = bet_amount
-            chip_coords = None
-            num_chips = 1
-            
-            if self.adaptive_chip_selection:
-                chip_value, chip_coords = self.select_chip(bet_amount, streak_length, gale_step)
-                num_chips = int(bet_amount / chip_value) if chip_value > 0 else 1
-                actual_bet = chip_value * num_chips
-                
-                # Select chip first
-                if chip_coords:
-                    self.select_chip_and_place(chip_value, chip_coords, num_chips)
-                    logger.info(f"Selected chip: {chip_value} (x{num_chips} = {actual_bet})")
-            
             # Place bet
-            logger.info(f"Placing bet: {bet_type} - {bet_amount} (using chip: {chip_value} x {num_chips})")
+            logger.info(f"Placing bet: {bet_type} - {bet_amount}")
             
-            # Click on betting area (multiple times if multiple chips)
-            for _ in range(num_chips):
-                self.click_with_delay(x, y)
-                if num_chips > 1:
-                    self._random_delay()  # Small delay between multiple chip placements
+            # Click on betting area
+            self.click_with_delay(x, y)
             
-            # Enter bet amount (if needed - for platforms that require manual entry)
+            # Enter bet amount (if needed)
             # Some platforms may require amount entry, others may have fixed chips
             # This depends on platform - may need to be configured
             if self.betting_config.get('requires_amount_entry', False):
