@@ -17,7 +17,7 @@ const updateNestedValue = (obj, path, newValue) => {
   return updated;
 };
 
-const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadPreset }) => {
+const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadPreset, isBotRunning }) => {
   const [formValue, setFormValue] = useState(null);
   const [presetName, setPresetName] = useState('');
   const [selectedPreset, setSelectedPreset] = useState('');
@@ -64,27 +64,27 @@ const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadP
     () => [
       { value: 'martingale', label: 'Martingale' },
       { value: 'fibonacci', label: 'Fibonacci' },
-      { value: 'custom', label: 'Custom' },
+      { value: 'custom', label: 'Personalizada' },
     ],
     [],
   );
 
   if (!formValue) {
-    return <div className="panel"><div className="empty-state">Loading configuration…</div></div>;
+    return <div className="panel"><div className="empty-state">Carregando configurações…</div></div>;
   }
 
   return (
     <div className="panel">
       <div className="panel-header">
-        <h2>Strategy Configuration</h2>
-        <span className="panel-subtitle">Adjust bot parameters without editing JSON files</span>
+        <h2>Configuração da estratégia</h2>
+        <span className="panel-subtitle">Ajuste os parâmetros do bot sem editar arquivos JSON</span>
       </div>
-      <form className="config-form" onSubmit={handleSubmit}>
+      <form className="config-form" onSubmit={handleSubmit} style={{ opacity: isBotRunning ? 0.6 : 1, pointerEvents: isBotRunning ? 'none' : 'auto' }}>
         <section>
-          <h3>Strategy</h3>
+          <h3>Estratégia</h3>
           <div className="form-grid">
             <label>
-              <span>Strategy Type</span>
+              <span>Tipo de estratégia</span>
               <select value={formValue.strategy?.type ?? ''} onChange={handleChange('strategy.type')}>
                 {strategyOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -92,71 +92,84 @@ const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadP
               </select>
             </label>
             <label>
-              <span>Base Bet</span>
+              <span>Aposta base</span>
               <input type="number" min="0" step="0.1" value={formValue.strategy?.base_bet ?? 0} onChange={handleChange('strategy.base_bet')} />
             </label>
             <label>
-              <span>Max Gales</span>
+              <span>Máximo de gales</span>
               <input type="number" min="0" step="1" value={formValue.strategy?.max_gales ?? 0} onChange={handleChange('strategy.max_gales')} />
             </label>
             <label>
-              <span>Multiplier</span>
+              <span>Multiplicador</span>
               <input type="number" min="1" step="0.1" value={formValue.strategy?.multiplier ?? 2} onChange={handleChange('strategy.multiplier')} />
             </label>
             <label>
-              <span>Bet Color Pattern</span>
+              <span>Padrão de cor das apostas</span>
               <select value={formValue.strategy?.bet_color_pattern ?? ''} onChange={handleChange('strategy.bet_color_pattern')}>
-                <option value="opposite">Opposite</option>
-                <option value="same">Same</option>
-                <option value="custom">Custom</option>
+                <option value="opposite">Oposta</option>
+                <option value="same">Igual</option>
+                <option value="custom">Personalizada</option>
               </select>
             </label>
             <label className="checkbox">
               <input type="checkbox" checked={formValue.strategy?.zero_handling?.reset_on_zero ?? false} onChange={handleToggle('strategy.zero_handling.reset_on_zero')} />
-              <span>Reset sequence on zero</span>
+              <span>Reiniciar sequência no zero</span>
             </label>
           </div>
         </section>
 
         <section>
-          <h3>Risk Management</h3>
+          <h3>Gestão de risco</h3>
           <div className="form-grid">
             <label>
-              <span>Initial Balance</span>
+              <span>Saldo inicial</span>
               <input type="number" min="0" step="0.1" value={formValue.risk?.initial_balance ?? 0} onChange={handleChange('risk.initial_balance')} />
             </label>
             <label>
-              <span>Stop Loss</span>
+              <span>Stop loss</span>
               <input type="number" min="0" step="0.1" value={formValue.risk?.stop_loss ?? 0} onChange={handleChange('risk.stop_loss')} />
             </label>
             <label>
-              <span>Guarantee Fund %</span>
+              <span>% do fundo garantidor</span>
               <input type="number" min="0" max="100" step="1" value={formValue.risk?.guarantee_fund_percentage ?? 0} onChange={handleChange('risk.guarantee_fund_percentage')} />
             </label>
           </div>
         </section>
 
         <section>
-          <h3>Maintenance</h3>
+          <h3>Manutenção</h3>
           <div className="form-grid">
             <label>
-              <span>Maintenance Interval (seconds)</span>
+              <span>Intervalo de manutenção (segundos)</span>
               <input type="number" min="0" step="60" value={formValue.session?.maintenance_bet_interval ?? 0} onChange={handleChange('session.maintenance_bet_interval')} />
             </label>
             <label>
-              <span>Minimum Bet Amount</span>
+              <span>Valor mínimo da aposta</span>
               <input type="number" min="0" step="0.1" value={formValue.session?.min_bet_amount ?? 0} onChange={handleChange('session.min_bet_amount')} />
             </label>
           </div>
         </section>
 
         <div className="form-actions">
-          <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save Configuration'}</button>
+          {isBotRunning && (
+            <div style={{ 
+              padding: '8px 12px', 
+              background: '#fef3c7', 
+              border: '1px solid #fbbf24', 
+              borderRadius: '4px', 
+              marginBottom: '12px',
+              fontSize: '14px',
+              color: '#92400e'
+            }}>
+              ⚠️ Bot está em execução. A configuração está desabilitada.
+            </div>
+          )}
+          <button type="submit" className="primary" disabled={saving || isBotRunning}>{saving ? 'Salvando…' : 'Salvar configurações'}</button>
           <div className="preset-actions">
-            <input type="text" placeholder="Preset name" value={presetName} onChange={(event) => setPresetName(event.target.value)} />
-            <button type="button" onClick={handlePresetSave} disabled={!presetName}>Save Preset</button>
+            <input type="text" placeholder="Nome do preset" value={presetName} onChange={(event) => setPresetName(event.target.value)} />
+            <button type="button" onClick={handlePresetSave} disabled={!presetName}>Salvar preset</button>
             <select value={selectedPreset} onChange={handlePresetLoad}>
-              <option value="" disabled>Load preset…</option>
+              <option value="" disabled>Carregar preset…</option>
               {(presets ?? []).map((preset) => (
                 <option key={preset.slug} value={preset.slug}>{preset.name}</option>
               ))}

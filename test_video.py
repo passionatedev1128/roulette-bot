@@ -11,9 +11,17 @@ import json
 from datetime import datetime
 from typing import Optional
 
+import logging
+
 from backend.app.detection import ScreenDetector
 from backend.app.detection.frame_detector import FrameDetector
 from backend.app.config_loader import ConfigLoader
+
+# Enable debug logging for detection
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 def test_video_detection(
@@ -50,33 +58,65 @@ def test_video_detection(
     if use_frame_detector:
         detector = FrameDetector(config, video_path)
         cap = detector.cap
+        
+        # Get video info
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps if fps > 0 else 0
+        
+        if not cap.isOpened():
+            print(f"Error: Could not open video file: {video_path}")
+            sys.exit(1)
     else:
+        # Screen mode: capture from desktop, not video file
         detector = ScreenDetector(config)
-        cap = cv2.VideoCapture(video_path)
+        cap = None  # No video file needed in screen mode
+        
+        # For screen mode, we don't have video metadata
+        # Use default values or estimate based on timing
+        fps = 30.0  # Default FPS for screen capture
+        total_frames = None  # Unknown in screen mode
+        duration = None
+        
+        print("⚠️  SCREEN MODE: Capturing from desktop, not video file")
+        print("   Make sure your roulette game is visible on screen!")
     
-    if not cap.isOpened():
-        print(f"Error: Could not open video file: {video_path}")
-        sys.exit(1)
+    # Log template information
+    print(f"\nTemplate Information:")
+    print(f"  Templates directory: {detector.winning_templates_dir}")
+    print(f"  Templates loaded: {len(detector.winning_templates)}")
+    print(f"  Template threshold: {detector.winning_template_threshold}")
+    if detector.winning_templates:
+        numbers = sorted([num for num, _ in detector.winning_templates])
+        print(f"  Template numbers: {numbers}")
+    else:
+        print("  ⚠️  WARNING: No winning templates loaded!")
+    print()
     
-    # Get video info
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = total_frames / fps if fps > 0 else 0
-    
-    print(f"Video info: {total_frames} frames, {fps:.2f} FPS, {duration:.2f} seconds")
-    print(f"Processing every {frame_skip} frame(s)...")
-    
-    # Calculate end frame if requested
-    start_frame = 0
-    end_frame = total_frames if end_seconds is None else min(int(end_seconds * fps), total_frames)
+    if use_frame_detector:
+        print(f"Video info: {total_frames} frames, {fps:.2f} FPS, {duration:.2f} seconds")
+        print(f"Processing every {frame_skip} frame(s)...")
+        
+        # Calculate end frame if requested
+        start_frame = 0
+        end_frame = total_frames if end_seconds is None else min(int(end_seconds * fps), total_frames)
 
-    if start_seconds > 0 and fps > 0:
-        start_frame = int(start_seconds * fps)
-        start_frame = min(start_frame, max(total_frames - 1, 0))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        print(f"Starting from {start_seconds:.2f}s (frame {start_frame})")
-    if end_seconds is not None:
-        print(f"Ending at {end_seconds:.2f}s (frame {end_frame})")
+        if start_seconds > 0 and fps > 0:
+            start_frame = int(start_seconds * fps)
+            start_frame = min(start_frame, max(total_frames - 1, 0))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            print(f"Starting from {start_seconds:.2f}s (frame {start_frame})")
+        if end_seconds is not None:
+            print(f"Ending at {end_seconds:.2f}s (frame {end_frame})")
+    else:
+        # Screen mode: continuous capture
+        start_frame = 0
+        end_frame = None  # No end frame in screen mode
+        print(f"Screen capture mode: Continuous detection")
+        print(f"Processing every {frame_skip} capture(s)...")
+        if max_frames is not None:
+            print(f"Will process up to {max_frames} captures")
+    
     print("-" * 60)
     
     # Create output directory
@@ -88,13 +128,18 @@ def test_video_detection(
     frame_count = start_frame
     processed_count = 0
     successful_detections = 0
+    last_detected_number = None  # Track last detected number to avoid duplicates
     
     # Calculate max frames to process
-    if max_frames is not None:
-        max_frames_to_process = min(max_frames, end_frame - start_frame)
-        print(f"Processing up to {max_frames_to_process} frames...")
+    if use_frame_detector:
+        if max_frames is not None:
+            max_frames_to_process = min(max_frames, end_frame - start_frame)
+            print(f"Processing up to {max_frames_to_process} frames...")
+        else:
+            max_frames_to_process = None
     else:
-        max_frames_to_process = None
+        # Screen mode: use max_frames directly
+        max_frames_to_process = max_frames
     
     # Process frames
     print("\nProcessing frames...")
@@ -105,12 +150,15 @@ def test_video_detection(
     while True:
         if not paused:
             if use_frame_detector:
+                # Frame mode: read from video file
                 frame = detector.capture_screen()
                 if frame is None:
                     break
             else:
-                ret, frame = cap.read()
-                if not ret:
+                # Screen mode: capture from desktop
+                frame = detector.capture_screen()
+                if frame is None:
+                    print("Failed to capture screen")
                     break
 
             frame_count += 1
@@ -119,15 +167,33 @@ def test_video_detection(
             processed_count += 1
 
             try:
+                # Detect result from frame
                 result = detector.detect_result(frame)
                 
+                # Only process if we got a valid number
                 if result.get('number') is not None:
+                    detected_number = result.get('number')
+                    
+                    # Skip if same number as last detection (number still on screen - normal in video)
+                    if detected_number == last_detected_number:
+                        continue
+                    
+                    # Validate result (only validate when number changes)
+                    if not detector.validate_result(result):
+                        # Validation failed - skip this detection
+                        continue
+                    
+                    # Valid new detection
                     successful_detections += 1
+                    last_detected_number = detected_number
                     status = "✅"
                 else:
                     status = "❌"
                 
-                print(f"Frame {frame_count}/{total_frames} ({processed_count} processed) {status}")
+                if use_frame_detector and total_frames:
+                    print(f"Frame {frame_count}/{total_frames} ({processed_count} processed) {status}")
+                else:
+                    print(f"Capture {frame_count} ({processed_count} processed) {status}")
                 print(f"  Number: {result.get('number', 'N/A')}")
                 print(f"  Color: {result.get('color', 'N/A')}")
                 print(f"  Zero: {result.get('zero', False)}")
@@ -135,16 +201,18 @@ def test_video_detection(
                 print(f"  Method: {result.get('method', 'N/A')}")
                 print()
                 
+                timestamp = frame_count / fps if fps > 0 and use_frame_detector else frame_count
                 results.append({
                     "frame_number": frame_count,
-                    "timestamp": frame_count / fps if fps > 0 else frame_count,
+                    "timestamp": timestamp,
                     "result": result
                 })
             except Exception as e:
                 print(f"Frame {frame_count} - Error: {e}")
+                timestamp = frame_count / fps if fps > 0 and use_frame_detector else frame_count
                 results.append({
                     "frame_number": frame_count,
-                    "timestamp": frame_count / fps if fps > 0 else frame_count,
+                    "timestamp": timestamp,
                     "error": str(e)
                 })
 
@@ -153,12 +221,15 @@ def test_video_detection(
                 print(f"Reached max frames limit ({max_frames_to_process}).")
                 break
             
-            if use_frame_detector and frame_count >= total_frames:
-                print("Reached end of video.")
-                break
-            if frame_count >= end_frame:
-                print(f"Reached end frame {end_frame}.")
-                break
+            if use_frame_detector:
+                # Frame mode: check video end
+                if frame_count >= total_frames:
+                    print("Reached end of video.")
+                    break
+                if end_frame is not None and frame_count >= end_frame:
+                    print(f"Reached end frame {end_frame}.")
+                    break
+            # Screen mode: continue indefinitely (or until max_frames)
         
         if display_windows and frame is not None:
             if detector.screen_region:
@@ -186,8 +257,7 @@ def test_video_detection(
     # Cleanup
     if use_frame_detector:
         detector.release()
-    else:
-        cap.release()
+    # Screen mode: no video file to release
     if display_windows:
         try:
             cv2.destroyAllWindows()
@@ -201,15 +271,20 @@ def test_video_detection(
     # Save JSON results
     json_file = output_path / f"test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump({
-            "video_path": str(video_path),
+        result_data = {
+            "mode": "frame" if use_frame_detector else "screen",
             "config_path": str(config_path),
-            "total_frames": total_frames,
             "processed_frames": processed_count,
             "successful_detections": successful_detections,
             "detection_rate": (successful_detections / processed_count * 100) if processed_count > 0 else 0,
             "results": results
-        }, f, indent=2, ensure_ascii=False)
+        }
+        if use_frame_detector:
+            result_data["video_path"] = str(video_path)
+            result_data["total_frames"] = total_frames
+        else:
+            result_data["source"] = "desktop_screen"
+        json.dump(result_data, f, indent=2, ensure_ascii=False)
     
     print(f"Results saved to: {json_file}")
     
@@ -217,7 +292,10 @@ def test_video_detection(
     print("\n" + "=" * 60)
     print("TEST SUMMARY")
     print("=" * 60)
-    print(f"Total frames in video: {total_frames}")
+    if use_frame_detector:
+        print(f"Total frames in video: {total_frames}")
+    else:
+        print(f"Mode: Screen capture (desktop)")
     print(f"Frames processed: {processed_count}")
     print(f"Successful detections: {successful_detections}")
     print(f"Detection rate: {(successful_detections / processed_count * 100) if processed_count > 0 else 0:.2f}%")
@@ -269,7 +347,24 @@ def test_video_detection(
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Test roulette bot detection on video file')
+    parser = argparse.ArgumentParser(
+        description='Test roulette bot detection on video file',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Test from 30 seconds onwards
+  python test_video.py video.mp4 --start 30
+  
+  # Test from 30s to 60s (30 seconds of video)
+  python test_video.py video.mp4 --start 30 --end 60
+  
+  # Test from 30s, process every 5th frame
+  python test_video.py video.mp4 --start 30 --skip 5
+  
+  # Test from 30s, limit to 100 frames
+  python test_video.py video.mp4 --start 30 --max-frames 100
+        """
+    )
     parser.add_argument(
         'video',
         type=str,
@@ -297,13 +392,13 @@ def main():
         '--start',
         type=float,
         default=0.0,
-        help='Start processing at this timestamp (seconds, default: 0)'
+        help='Start processing at this timestamp in seconds (default: 0.0). Example: --start 30 to start from 30 seconds'
     )
     parser.add_argument(
         '--end',
         type=float,
         default=None,
-        help='Stop processing at this timestamp (seconds)'
+        help='Stop processing at this timestamp in seconds (default: end of video)'
     )
     parser.add_argument(
         '--display',
@@ -314,8 +409,8 @@ def main():
         '--mode',
         type=str,
         choices=['screen', 'frame'],
-        default='screen',
-        help='screen: capture desktop, frame: read from video file'
+        default='frame',
+        help='screen: capture desktop, frame: read from video file (default: frame)'
     )
     parser.add_argument(
         '--max-frames',

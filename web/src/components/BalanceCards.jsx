@@ -4,30 +4,64 @@ const formatCurrency = (value) => {
   if (value === undefined || value === null) {
     return '—';
   }
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'BRL',
     maximumFractionDigits: 2,
   }).format(value);
 };
 
 const BalanceCards = ({ balance }) => {
+  const profitLoss = balance?.profit_loss ?? 0;
+  const todayProfitLoss = balance?.today_profit_loss ?? 0;
+  
   const cards = [
-    { label: 'Current Balance', value: formatCurrency(balance?.current_balance) },
-    { label: 'Initial Balance', value: formatCurrency(balance?.initial_balance) },
-    { label: 'Total P/L', value: formatCurrency(balance?.profit_loss) },
-    { label: "Today's P/L", value: formatCurrency(balance?.today_profit_loss) },
-    { label: 'Total Bets', value: balance?.total_bets ?? 0 },
-    { label: 'Wins', value: balance?.wins ?? 0 },
-    { label: 'Losses', value: balance?.losses ?? 0 },
+    { 
+      label: 'Saldo atual', 
+      value: formatCurrency(balance?.current_balance),
+      highlight: true
+    },
+    { 
+      label: 'Saldo inicial', 
+      value: formatCurrency(balance?.initial_balance) 
+    },
+    { 
+      label: 'P/L total', 
+      value: formatCurrency(profitLoss),
+      className: profitLoss >= 0 ? 'positive' : 'negative'
+    },
+    { 
+      label: 'P/L do dia', 
+      value: formatCurrency(todayProfitLoss),
+      className: todayProfitLoss >= 0 ? 'positive' : 'negative'
+    },
+    { 
+      label: 'Apostas totais', 
+      value: balance?.total_bets ?? 0 
+    },
+    { 
+      label: 'Vitórias', 
+      value: balance?.wins ?? 0,
+      className: 'positive'
+    },
+    { 
+      label: 'Derrotas', 
+      value: balance?.losses ?? 0,
+      className: 'negative'
+    },
   ];
 
   return (
     <div className="cards-grid">
       {cards.map((card) => (
-        <div key={card.label} className="card">
+        <div 
+          key={card.label} 
+          className="card"
+        >
           <span className="card-label">{card.label}</span>
-          <span className="card-value">{card.value}</span>
+          <span className={`card-value ${card.className || ''}`}>
+            {card.value}
+          </span>
         </div>
       ))}
     </div>

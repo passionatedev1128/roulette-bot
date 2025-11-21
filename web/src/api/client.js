@@ -32,12 +32,12 @@ export const fetchBetHistory = async (limit = 20) => {
 };
 
 export const fetchConfig = async () => {
-  const { data } = await api.get('/api/config');
+  const { data } = await api.get('/api/config/');
   return data;
 };
 
 export const updateConfig = async (config, persist = true) => {
-  const { data } = await api.put('/api/config', { config, persist });
+  const { data } = await api.put('/api/config/', { config, persist });
   return data;
 };
 

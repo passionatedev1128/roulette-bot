@@ -91,6 +91,9 @@ class BotTester:
         self.results: List[Dict[str, Any]] = []
         self.pending_bet: Optional[Dict[str, Any]] = None
         self.last_detected_number: Optional[int] = None
+        # Track all processed numbers to prevent duplicates
+        self.processed_numbers: set = set()
+        self.last_number_frame: Dict[int, int] = {}  # Track last frame each number was processed
         
         # Load config
         self.config = ConfigLoader.load_config(config_path)
@@ -140,13 +143,24 @@ class BotTester:
         # Detection info
         detector = self.bot.detector
         if isinstance(detector, ScreenDetector):
-            print(f"Templates Loaded: {len(detector.winning_templates)}")
-            if detector.winning_templates:
-                template_numbers = sorted([t[0] for t in detector.winning_templates])
+            print(f"Templates Loaded: {len(getattr(detector, 'winning_templates', []))}")
+            winning_templates = getattr(detector, 'winning_templates', [])
+            if winning_templates:
+                template_numbers = sorted([t[0] for t in winning_templates])
                 print(f"Template Numbers: {template_numbers}")
-            print(f"Template Threshold: {detector.winning_template_threshold}")
-            print(f"OCR Fallback: {'ENABLED' if detector.enable_ocr_fallback else 'DISABLED'}")
-            print(f"OCR Confidence Threshold: {detector.ocr_confidence_threshold}")
+            print(f"Template Threshold: {getattr(detector, 'winning_template_threshold', 'N/A')}")
+            enable_ocr = getattr(detector, 'enable_ocr_fallback', None)
+            if enable_ocr is not None:
+                print(f"OCR Fallback: {'ENABLED' if enable_ocr else 'DISABLED'}")
+                print(f"OCR Confidence Threshold: {getattr(detector, 'ocr_confidence_threshold', 'N/A')}")
+        elif hasattr(detector, 'winning_templates'):
+            # Handle FrameDetector or other detector types
+            print(f"Templates Loaded: {len(getattr(detector, 'winning_templates', []))}")
+            winning_templates = getattr(detector, 'winning_templates', [])
+            if winning_templates:
+                template_numbers = sorted([t[0] for t in winning_templates])
+                print(f"Template Numbers: {template_numbers}")
+            print(f"Template Threshold: {getattr(detector, 'winning_template_threshold', 'N/A')}")
         print("=" * 80 + "\n")
     
     def check_detection_setup(self) -> bool:
@@ -158,9 +172,11 @@ class BotTester:
         issues = []
         
         # Check templates
-        if len(detector.winning_templates) == 0:
+        winning_templates = getattr(detector, 'winning_templates', [])
+        if len(winning_templates) == 0:
             issues.append("⚠️  No winning number templates loaded")
-            if not detector.enable_ocr_fallback:
+            enable_ocr = getattr(detector, 'enable_ocr_fallback', None)
+            if enable_ocr is False:
                 issues.append("⚠️  OCR fallback is disabled - detection may fail")
         
         # Check screen region
@@ -178,7 +194,12 @@ class BotTester:
     
     def process_spin(self, detection: Dict, frame_number: int) -> bool:
         """
-        Process a single spin.
+        Process a single spin with correct timing:
+        1. Resolve previous pending bet (if any) using current number
+        2. Update strategy with bet result
+        3. Add current number to bot's result history
+        4. Calculate new bet for next spin
+        5. Store new bet as pending
         
         Args:
             detection: Detection result
@@ -191,11 +212,18 @@ class BotTester:
         if current_number is None:
             return False
         
-        # Skip if same number (not a new spin)
-        if current_number == self.last_detected_number:
+        # Skip if same number was already processed (prevent duplicates)
+        # Check if this number was already processed in this test run
+        if current_number in self.processed_numbers:
+            if self.verbose:
+                last_frame = self.last_number_frame.get(current_number, 'unknown')
+                print(f"  ⏭️  Skipping duplicate number {current_number} (already processed at frame {last_frame})")
             return False
         
+        # Update tracking
         self.last_detected_number = current_number
+        self.processed_numbers.add(current_number)
+        self.last_number_frame[current_number] = frame_number
         self.stats['total_spins'] += 1
         self.stats['successful_detections'] += 1
         self.stats['numbers_detected'].append(current_number)
@@ -232,10 +260,12 @@ class BotTester:
             print(f"  Gale step: {gale_step}, In cycle: {in_cycle}")
             print(f"  Balance: {self.bot.current_balance:.2f}")
         
-        # Handle pending bet (result of previous bet)
+        # STEP 1: Handle pending bet (result of previous bet)
+        # This number is the RESULT that resolves the previous bet
         if self.pending_bet:
             bet_type = self.pending_bet['bet_type']
             bet_amount = self.pending_bet['bet_amount']
+            previous_gale_step = self.pending_bet.get('gale_step', 0)
             
             # Determine win/loss
             won = False
@@ -256,7 +286,9 @@ class BotTester:
                     self.pending_bet = None
                     if self.verbose:
                         print(f"  ⚠️  ZERO - Cycle reset (zero_policy: reset)")
-                    return True
+                    # Still need to add result to history and calculate next bet
+                    # Continue processing below
+                # else: count_as_loss (default)
             
             # Process win/loss
             if won:
@@ -265,8 +297,8 @@ class BotTester:
                 if self.verbose:
                     print(f"  🎉 WIN! +{bet_amount:.2f} (Balance: {self.bot.current_balance:.2f})")
                 
-                # Check if cycle ended
-                if gale_step == 0:  # First bet in cycle won
+                # Check if cycle ended (first bet in cycle won)
+                if previous_gale_step == 0:
                     cycle_ended = True
                     self.stats['cycles_completed'] += 1
                     self.stats['cycles_won'] += 1
@@ -277,7 +309,7 @@ class BotTester:
                     print(f"  ❌ LOSS! -{bet_amount:.2f} (Balance: {self.bot.current_balance:.2f})")
                 
                 # Check if max gale reached
-                if gale_step >= getattr(strategy, 'max_gales', 3):
+                if previous_gale_step >= getattr(strategy, 'max_gales', 3):
                     cycle_ended = True
                     self.stats['cycles_completed'] += 1
                     self.stats['cycles_lost'] += 1
@@ -285,7 +317,7 @@ class BotTester:
                     if self.verbose:
                         print(f"  ⚠️  Max gale reached - cycle ended")
             
-            # Update strategy
+            # STEP 2: Update strategy with bet result (before adding result to history)
             bet_result_data = {
                 'result': 'win' if won else 'loss',
                 'bet_amount': bet_amount,
@@ -296,31 +328,59 @@ class BotTester:
             if hasattr(self.bot, 'strategy_manager') and self.bot.strategy_manager:
                 self.bot.strategy_manager.update_after_bet(bet_result_data)
                 self.bot.strategy = self.bot.strategy_manager.get_current_strategy()
+                strategy = self.bot.strategy_manager.get_current_strategy()
             else:
                 self.bot.strategy.update_after_bet(bet_result_data)
+                strategy = self.bot.strategy
             
             self.pending_bet = None
         
-        # Process new spin (calculate bet decision)
+        # STEP 3: Add current result to bot's history
+        # This result is now part of history for calculating the next bet
+        self.bot.result_history.append(detection)
+        if len(self.bot.result_history) > 100:  # Keep last 100 results
+            self.bot.result_history.pop(0)
+        
+        # Increment bot's spin number (for logging consistency)
+        self.bot.spin_number += 1
+        
+        # Handle zero if needed (strategy-specific handling)
+        if is_zero:
+            zero_handling = strategy.handle_zero(self.bot.result_history, self.bot.current_balance)
+            if self.verbose and zero_handling:
+                print(f"  Zero handling: {zero_handling}")
+        
+        # STEP 4: Calculate new bet for next spin
+        # Use the updated strategy state and history
+        bet_decision = None
         try:
-            spin_result = self.bot.process_spin(detection)
-            bet_decision = spin_result.get('bet_decision')
+            if hasattr(self.bot, 'strategy_manager') and self.bot.strategy_manager:
+                bet_decision = self.bot.strategy_manager.calculate_bet(
+                    self.bot.result_history,
+                    self.bot.current_balance,
+                    detection
+                )
+            else:
+                bet_decision = strategy.calculate_bet(
+                    self.bot.result_history,
+                    self.bot.current_balance,
+                    detection
+                )
             
             if bet_decision:
                 self.stats['bets_placed'] += 1
                 bet_type = bet_decision.get('bet_type')
                 bet_amount = bet_decision.get('bet_amount', 0.0)
                 
-                # Store as pending bet
+                # STEP 5: Store as pending bet (to be resolved on next detection)
                 self.pending_bet = {
                     'bet_type': bet_type,
                     'bet_amount': bet_amount,
-                    'gale_step': bet_decision.get('gale_step', 0),
+                    'gale_step': bet_decision.get('gale_step', strategy.gale_step),
                     'streak_length': bet_decision.get('streak_length', 0)
                 }
                 
                 # Get updated strategy state
-                strategy = self.bot.strategy
                 if hasattr(self.bot, 'strategy_manager') and self.bot.strategy_manager:
                     strategy = self.bot.strategy_manager.get_current_strategy()
                     strategy_name = f" [{self.bot.strategy_manager.current_strategy_name}]"
@@ -330,6 +390,7 @@ class BotTester:
                 even_streak = getattr(strategy, 'current_even_streak', 0)
                 odd_streak = getattr(strategy, 'current_odd_streak', 0)
                 gale_step = strategy.gale_step
+                in_cycle = getattr(strategy, 'cycle_active', False)
                 
                 if self.verbose:
                     print(f"  ✅ BET: {bet_type.upper()} - {bet_amount:.2f} (Gale: {gale_step}){strategy_name}")
@@ -337,12 +398,21 @@ class BotTester:
             else:
                 if self.verbose:
                     print(f"  → No bet (strategy conditions not met)")
+                
+                # Update strategy state even if no bet
+                if hasattr(self.bot, 'strategy_manager') and self.bot.strategy_manager:
+                    strategy = self.bot.strategy_manager.get_current_strategy()
+                even_streak = getattr(strategy, 'current_even_streak', 0)
+                odd_streak = getattr(strategy, 'current_odd_streak', 0)
+                gale_step = strategy.gale_step
+                in_cycle = getattr(strategy, 'cycle_active', False)
         
         except Exception as e:
             if self.verbose:
-                print(f"  ❌ Error processing spin: {e}")
+                print(f"  ❌ Error calculating bet: {e}")
             import traceback
             traceback.print_exc()
+            bet_decision = None
         
         # Store result
         self.results.append({
@@ -352,7 +422,7 @@ class BotTester:
             'even_odd': even_odd_str,
             'detection_method': method,
             'confidence': detection.get('confidence', 0),
-            'bet_decision': bet_decision if 'bet_decision' in locals() else None,
+            'bet_decision': bet_decision,
             'pending_bet': self.pending_bet,
             'balance': self.bot.current_balance,
             'even_streak': even_streak,
@@ -404,29 +474,34 @@ class BotTester:
                         print(f"\n✅ Reached maximum spins limit: {self.max_spins}")
                     break
                 
-                # Only stop on detection failures if we haven't detected anything yet
-                # Once we start detecting, be more lenient
-                if consecutive_failures >= self.max_detection_failures:
-                    if self.stats['total_spins'] == 0:
-                        # No detections at all - might be wrong region
-                        if self.verbose:
-                            print(f"\n⚠️  Too many consecutive detection failures ({consecutive_failures})")
-                            print(f"   No numbers detected - check screen_region and templates")
-                        break
-                    else:
-                        # We've detected before, but now failing - might be end of game section
-                        # Continue for a bit more before stopping
-                        if consecutive_failures >= self.max_detection_failures * 2:
-                            if self.verbose:
-                                print(f"\n⚠️  Extended detection failures ({consecutive_failures}) - likely end of game")
-                            break
+                # Check if we've reached the end of video by frame position
+                current_frame_pos = int(self.frame_detector.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                if current_frame_pos >= total_frames:
+                    if self.verbose:
+                        print(f"\n✅ End of video reached (frame {current_frame_pos}/{total_frames})")
+                    break
                 
-                # Capture frame
+                # Capture frame - this is the primary way to detect end of video
                 frame = self.frame_detector.capture_screen()
                 if frame is None:
                     if self.verbose:
-                        print("\n✅ End of video reached")
+                        print(f"\n✅ End of video reached (no more frames available)")
                     break
+                
+                # Only stop on detection failures if we haven't detected anything yet
+                # Once we start detecting, continue until video ends (frame is None)
+                if consecutive_failures >= self.max_detection_failures:
+                    if self.stats['total_spins'] == 0:
+                        # No detections at all - might be wrong region
+                        # But still continue processing frames in case detection improves
+                        if consecutive_failures >= self.max_detection_failures * 3:
+                            if self.verbose:
+                                print(f"\n⚠️  Too many consecutive detection failures ({consecutive_failures})")
+                                print(f"   No numbers detected - check screen_region and templates")
+                                print(f"   Continuing to process video but detection may be failing...")
+                        # Don't break - continue processing video
+                    # If we've detected before, just continue - don't stop on failures
+                    # The video will end naturally when frame is None
                 
                 self.stats['total_frames_processed'] += 1
                 
@@ -447,7 +522,7 @@ class BotTester:
                               f"Balance: {self.bot.current_balance:.2f}")
                         last_progress = progress
                 
-                # Detect result
+                # Detect result (pass frame directly to detector)
                 detection = self.bot.detector.detect_result(frame)
                 
                 if detection is None or detection.get('number') is None:
@@ -455,6 +530,27 @@ class BotTester:
                     self.stats['detection_failures'] += 1
                     if self.verbose and consecutive_failures % 100 == 0:
                         print(f"  ... {consecutive_failures} consecutive detection failures ...")
+                    continue
+                
+                detected_number = detection.get('number')
+                
+                # Skip if same number as last detection (number still on screen - normal in video)
+                # Also check against all processed numbers to avoid processing duplicates
+                if not hasattr(self, 'processed_numbers'):
+                    self.processed_numbers = set()
+                    self.last_number_frame = {}
+                
+                if detected_number == self.last_detected_number or detected_number in self.processed_numbers:
+                    if self.verbose and detected_number in self.processed_numbers:
+                        last_frame = self.last_number_frame.get(detected_number, 'unknown')
+                        print(f"  ⏭️  Skipping duplicate number {detected_number} (already processed at frame {last_frame})")
+                    continue
+                
+                # Validate result (only validate when number changes)
+                if not self.bot.detector.validate_result(detection):
+                    # Validation failed - skip this detection
+                    consecutive_failures += 1
+                    self.stats['detection_failures'] += 1
                     continue
                 
                 # Reset failure counter
@@ -604,22 +700,90 @@ def main():
     
     parser = argparse.ArgumentParser(description='Comprehensive bot testing script')
     parser.add_argument('video', type=str, help='Path to video file')
-    parser.add_argument('--config', type=str, default='config/default_config.json',
+    parser.add_argument('--config', '-c', type=str, default='config/default_config.json',
                        help='Path to configuration file')
-    parser.add_argument('--start-frame', type=int, default=0,
+    parser.add_argument('--start-frame', '-s', type=int, default=0,
                        help='Frame to start from (default: 0)')
-    parser.add_argument('--max-spins', type=int, default=None,
+    parser.add_argument('--max-spins', '-m', type=int, default=None,
                        help='Maximum spins to process (default: None = process entire video)')
     parser.add_argument('--max-failures', type=int, default=500,
                        help='Max consecutive detection failures (default: 500)')
-    parser.add_argument('--frame-skip', type=int, default=1,
+    parser.add_argument('--frame-skip', '-f', type=int, default=1,
                        help='Process every Nth frame (default: 1 = all frames)')
-    parser.add_argument('--quiet', action='store_true',
+    parser.add_argument('--quiet', '-q', action='store_true',
                        help='Reduce output verbosity')
-    parser.add_argument('--save-results', type=str, default=None,
+    parser.add_argument('--save-results', '-o', type=str, default=None,
                        help='Save results to JSON file')
     
-    args = parser.parse_args()
+    # Filter sys.argv to remove kernel JSON files (Colab/Jupyter issue)
+    # These files can appear in sys.argv and cause parsing errors
+    # We need to be careful to preserve argument-value pairs
+    filtered_argv = []
+    argv_list = sys.argv[1:]  # Skip script name
+    
+    # Flags that expect a value
+    flags_needing_value = ['-f', '--frame-skip', '-s', '--start-frame', '-m', '--max-spins', 
+                          '--max-failures', '-c', '--config', '-o', '--save-results']
+    
+    def is_kernel_file(arg):
+        """Check if argument is a kernel JSON file."""
+        if not arg or not isinstance(arg, str):
+            return False
+        return (arg.endswith('.json') and 
+                ('kernel' in arg or 'runtime' in arg) and
+                ('/root/.local/share/jupyter' in arg or 
+                 '/tmp' in arg or 
+                 arg.startswith('/root')))
+    
+    i = 0
+    while i < len(argv_list):
+        arg = argv_list[i]
+        
+        # Skip kernel files
+        if is_kernel_file(arg):
+            i += 1
+            continue
+        
+        # Skip empty strings
+        if not arg.strip():
+            i += 1
+            continue
+        
+        # Check if this is a flag that expects a value
+        if arg in flags_needing_value:
+            filtered_argv.append(arg)  # Add the flag
+            i += 1
+            
+            # Now find the value for this flag
+            # Skip any kernel files that might be in between
+            value_found = False
+            while i < len(argv_list):
+                next_arg = argv_list[i]
+                
+                # If it's a kernel file, skip it
+                if is_kernel_file(next_arg):
+                    i += 1
+                    continue
+                
+                # If it's another flag, this flag is missing its value
+                if next_arg in flags_needing_value or next_arg.startswith('-'):
+                    break
+                
+                # This looks like a value - add it
+                filtered_argv.append(next_arg)
+                value_found = True
+                i += 1
+                break
+            
+            # If no value found after skipping kernel files, argparse will handle the error
+            continue
+        
+        # Regular argument (not a flag)
+        filtered_argv.append(arg)
+        i += 1
+    
+    # If no valid arguments after filtering, use empty list (will show help)
+    args = parser.parse_args(filtered_argv if filtered_argv else ['--help'])
     
     # Check if video exists
     if not Path(args.video).exists():

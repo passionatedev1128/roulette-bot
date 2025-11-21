@@ -94,6 +94,7 @@ def test_pipeline(video_path=None, frame_skip=30, max_frames=None):
     frame_count = 0
     processed_count = 0
     detection_count = 0
+    last_detected_number = None  # Track last detected number to avoid duplicates
     
     try:
         while cap.isOpened():
@@ -113,10 +114,24 @@ def test_pipeline(video_path=None, frame_skip=30, max_frames=None):
             
             processed_count += 1
             
-            # Detect result
+            # Detect result (pass frame directly to detector)
             result = detector.detect_result(frame)
             
-            if result['number'] is not None:
+            # Only process if we got a valid number
+            if result.get('number') is not None:
+                detected_number = result['number']
+                
+                # Skip if same number as last detection (number still on screen - normal in video)
+                if detected_number == last_detected_number:
+                    continue
+                
+                # Validate result (only validate when number changes)
+                if not detector.validate_result(result):
+                    # Validation failed - skip this detection
+                    continue
+                
+                # Valid new detection
+                last_detected_number = detected_number
                 detection_count += 1
                 print(f"Frame {frame_count}: Detected {result['number']} ({result['color']}) [Confidence: {result.get('confidence', 0):.2f}]")
                 

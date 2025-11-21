@@ -16,20 +16,37 @@ export const useWebSocket = (url, onEvent) => {
     let reconnectTimeout;
 
     const connect = () => {
-      ws = new WebSocket(url);
+      try {
+        ws = new WebSocket(url);
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handlerRef.current?.(data);
-        } catch (error) {
-          console.warn('WebSocket message parse error', error);
-        }
-      };
+        ws.onopen = () => {
+          console.log('WebSocket connected:', url);
+        };
 
-      ws.onclose = () => {
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handlerRef.current?.(data);
+          } catch (error) {
+            console.warn('WebSocket message parse error', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          console.error('Failed to connect to:', url);
+        };
+
+        ws.onclose = (event) => {
+          if (event.code !== 1000) {
+            console.warn('WebSocket closed unexpectedly. Code:', event.code, 'Reason:', event.reason);
+          }
+          reconnectTimeout = window.setTimeout(connect, 3000);
+        };
+      } catch (error) {
+        console.error('WebSocket connection error:', error);
         reconnectTimeout = window.setTimeout(connect, 3000);
-      };
+      }
     };
 
     connect();

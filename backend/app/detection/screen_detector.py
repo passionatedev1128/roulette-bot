@@ -9,6 +9,7 @@ import pytesseract
 import pyautogui
 from PIL import Image
 import logging
+import warnings
 from typing import Dict, Optional, Tuple
 import time
 import re
@@ -16,6 +17,15 @@ from pathlib import Path
 
 try:
     import easyocr  # type: ignore
+
+    # easyocr internally sets pin_memory=True on its DataLoader which emits a warning on CPU-only hosts.
+    # Filter the warning to avoid noisy console output when no accelerator is available.
+    warnings.filterwarnings(
+        "ignore",
+        message=".*'pin_memory' argument is set as true but no accelerator is found.*",
+        category=UserWarning,
+    )
+
     _EASY_OCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
 except Exception:  # pragma: no cover - optional dependency
     _EASY_OCR_READER = None
@@ -38,8 +48,24 @@ class ScreenDetector:
         self.screen_region = detection_config.get('screen_region', None)
         self.color_ranges = detection_config.get('color_ranges', {})
         self.ocr_debug = bool(detection_config.get('ocr_debug', False))
-        self.winning_templates_dir = detection_config.get('winning_templates_dir', 'winning-number_templates')
+        # Get template directory path and resolve it (handle both relative and absolute paths)
+        template_dir_raw = detection_config.get('winning_templates_dir', 'winning-number_templates')
+        # Remove trailing slash if present
+        template_dir_raw = template_dir_raw.rstrip('/').rstrip('\\')
+        # Try to resolve as absolute path first, then relative to current working directory
+        template_dir_path = Path(template_dir_raw)
+        if not template_dir_path.is_absolute():
+            # Try relative to current working directory
+            template_dir_path = Path.cwd() / template_dir_path
+            # If not found, try relative to config file location (if available)
+            if not template_dir_path.exists():
+                # Try relative to project root (common case)
+                project_root = Path(__file__).parent.parent.parent.parent
+                template_dir_path = project_root / template_dir_raw
+        self.winning_templates_dir = str(template_dir_path)
+        
         self.winning_template_threshold = float(detection_config.get('winning_template_threshold', 0.75))
+        self.ocr_confidence_threshold = float(detection_config.get('ocr_confidence_threshold', 0.9))
         
         # Initialize color ranges if not provided
         if not self.color_ranges:
@@ -51,10 +77,15 @@ class ScreenDetector:
 
         self.winning_templates = self._load_winning_number_templates()
         
-        logger.info("ScreenDetector initialized")
+        logger.info(f"ScreenDetector initialized with winning templates dir: {self.winning_templates_dir}")
+        logger.info(f"Loaded {len(self.winning_templates)} winning number templates")
 
     def _preprocess_badge_image(self, image: np.ndarray) -> np.ndarray:
         """Convert badge image to normalized grayscale for comparison."""
+        # Check if image is empty or invalid
+        if image is None or image.size == 0 or image.shape[0] == 0 or image.shape[1] == 0:
+            raise ValueError("Cannot preprocess empty image")
+        
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
@@ -67,39 +98,85 @@ class ScreenDetector:
         """Load winning number templates from disk."""
         templates = []
         template_dir = Path(self.winning_templates_dir)
+        
+        logger.debug(f"Looking for winning templates in: {template_dir.absolute()}")
+        
         if not template_dir.exists():
-            logger.info("Winning templates directory not found: %s", template_dir)
-            return templates
+            logger.warning(
+                "Winning templates directory not found: %s (absolute: %s)",
+                template_dir,
+                template_dir.absolute()
+            )
+            # Try alternative locations
+            alternative_paths = [
+                Path.cwd() / "winning-number_templates",
+                Path(__file__).parent.parent.parent.parent / "winning-number_templates",
+                Path.cwd() / "winning-number_templates" / "",
+            ]
+            for alt_path in alternative_paths:
+                if alt_path.exists():
+                    logger.info(f"Found templates in alternative location: {alt_path.absolute()}")
+                    template_dir = alt_path
+                    break
+            else:
+                logger.warning("No winning templates found in any location")
+                return templates
 
-        for path in sorted(template_dir.glob("*.png")):
+        template_files = list(template_dir.glob("*.png"))
+        logger.debug(f"Found {len(template_files)} PNG files in template directory")
+        
+        for path in sorted(template_files):
             match = re.search(r'(\d+)', path.stem)
             if not match:
+                logger.debug(f"Skipping template file (no number found): {path.name}")
                 continue
             number = int(match.group(1))
             img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
             if img is None:
+                logger.warning(f"Failed to load template image: {path}")
                 continue
             processed = self._preprocess_badge_image(img)
             templates.append((number, processed))
+            logger.debug(f"Loaded template for number {number} from {path.name}")
 
         if templates:
-            logger.info("Loaded %d winning number templates from %s", len(templates), template_dir)
+            logger.info("Loaded %d winning number templates from %s", len(templates), template_dir.absolute())
+            # Log which numbers were loaded
+            numbers_loaded = sorted([num for num, _ in templates])
+            logger.debug(f"Template numbers loaded: {numbers_loaded}")
         else:
-            logger.warning("No winning number templates loaded from %s", template_dir)
+            logger.warning("No winning number templates loaded from %s", template_dir.absolute())
         return templates
 
     def detect_winning_number_template(self, roi: np.ndarray) -> Optional[Tuple[int, float]]:
         """Try to match ROI against cached winning-number templates."""
         if not self.winning_templates:
+            logger.debug("No winning templates available for matching")
             return None
 
-        processed = self._preprocess_badge_image(roi)
+        # Check if ROI is empty or invalid
+        if roi is None or roi.size == 0 or (hasattr(roi, 'shape') and (roi.shape[0] == 0 or roi.shape[1] == 0)):
+            logger.debug("ROI is empty, cannot match templates")
+            return None
+
+        try:
+            processed = self._preprocess_badge_image(roi)
+        except (ValueError, cv2.error) as e:
+            logger.warning(f"Template matching failed: {e}")
+            return None
         best_number = None
         best_score = -1.0
         all_scores = {}  # Track all scores for debugging
 
+        logger.debug(f"Matching ROI (shape: {roi.shape}) against {len(self.winning_templates)} templates")
+
         for number, template in self.winning_templates:
             h, w = template.shape
+            # Check if ROI is too small
+            if processed.shape[0] < h or processed.shape[1] < w:
+                logger.debug(f"ROI too small for template {number}: ROI={processed.shape}, template={template.shape}")
+                continue
+                
             resized = cv2.resize(processed, (w, h), interpolation=cv2.INTER_AREA)
             try:
                 result = cv2.matchTemplate(resized, template, cv2.TM_CCOEFF_NORMED)
@@ -116,12 +193,19 @@ class ScreenDetector:
         if best_number is not None:
             if best_score < self.winning_template_threshold:
                 logger.debug(
-                    "Template match below threshold: best=%d (%.3f), threshold=%.3f. All scores: %s",
+                    "Template match below threshold: best=%d (%.3f), threshold=%.3f. Top 5 scores: %s",
                     best_number, best_score, self.winning_template_threshold,
-                    {k: f"{v:.3f}" for k, v in sorted(all_scores.items(), key=lambda x: x[1], reverse=True)}
+                    {k: f"{v:.3f}" for k, v in sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:5]}
+                )
+            else:
+                logger.info(
+                    "Template match SUCCESS: number=%d, confidence=%.3f (threshold=%.3f)",
+                    best_number, best_score, self.winning_template_threshold
                 )
             if best_score >= self.winning_template_threshold:
                 return best_number, best_score
+        else:
+            logger.debug("No template match found (no templates matched)")
         
         return None
     
@@ -168,7 +252,7 @@ class ScreenDetector:
             logger.error(f"Error capturing screen: {e}")
             raise
     
-    def detect_number_ocr(self, frame: np.ndarray, region: Optional[Tuple] = None) -> Optional[int]:
+    def detect_number_ocr(self, frame: np.ndarray, region: Optional[Tuple] = None) -> Optional[Tuple[int, float]]:
         """
         Detect number using OCR.
         
@@ -177,7 +261,8 @@ class ScreenDetector:
             region: Optional region (x, y, w, h) to focus OCR on
             
         Returns:
-            Detected number (0-36) or None
+            Tuple of (detected number (0-36), confidence (0-1)) or None
+            Only returns if confidence >= ocr_confidence_threshold (default 0.9)
         """
         try:
             tesseract_available = True
@@ -189,9 +274,18 @@ class ScreenDetector:
                     logger.debug("No OCR backend available (tesseract missing, easyocr not installed)")
                     return None
             
+            # Validate frame is not empty
+            if frame is None or frame.size == 0 or (hasattr(frame, 'shape') and (frame.shape[0] == 0 or frame.shape[1] == 0)):
+                logger.debug("Frame is empty, cannot detect number with OCR")
+                return None
+            
             if region:
                 x, y, w, h = region
                 roi = frame[y:y + h, x:x + w]
+                # Validate ROI is not empty
+                if roi is None or roi.size == 0 or (hasattr(roi, 'shape') and (roi.shape[0] == 0 or roi.shape[1] == 0)):
+                    logger.debug("ROI is empty, cannot detect number with OCR")
+                    return None
             else:
                 roi = frame
 
@@ -226,21 +320,54 @@ class ScreenDetector:
 
                 for variant_name, image_variant in variants:
                     for cfg in ocr_configs:
-                        text = pytesseract.image_to_string(image_variant, config=cfg)
-                        digits = "".join(filter(str.isdigit, text))
-                        if digits:
+                        # Get both text and confidence
+                        try:
+                            data = pytesseract.image_to_data(image_variant, config=cfg, output_type=pytesseract.Output.DICT)
+                            # Extract text and confidence
+                            confidences = [int(conf) for conf in data['conf'] if conf != '-1']
+                            texts = [text for text in data['text'] if text.strip()]
+                            
+                            if texts and confidences:
+                                # Get the best confidence score
+                                max_confidence = max(confidences) / 100.0  # Convert to 0-1 scale
+                                text = ' '.join(texts)
+                                digits = "".join(filter(str.isdigit, text))
+                                
+                                if digits and max_confidence >= self.ocr_confidence_threshold:
+                                    try:
+                                        number = int(digits)
+                                        if 0 <= number <= 36:
+                                            logger.debug(
+                                                "OCR detected %s from text '%s' with confidence %.2f (variant=%s, cfg=%s)",
+                                                number,
+                                                text.strip(),
+                                                max_confidence,
+                                                variant_name,
+                                                cfg,
+                                            )
+                                            return (number, max_confidence)
+                                    except ValueError:
+                                        continue
+                        except Exception as e:
+                            # Fallback to simple text extraction if confidence extraction fails
+                            logger.debug(f"OCR confidence extraction failed, trying simple method: {e}")
                             try:
-                                number = int(digits)
-                                if 0 <= number <= 36:
-                                    logger.debug(
-                                        "OCR detected %s from text '%s' (variant=%s, cfg=%s)",
-                                        number,
-                                        text.strip(),
-                                        variant_name,
-                                        cfg,
-                                    )
-                                    return number
-                            except ValueError:
+                                text = pytesseract.image_to_string(image_variant, config=cfg)
+                                digits = "".join(filter(str.isdigit, text))
+                                if digits:
+                                    try:
+                                        number = int(digits)
+                                        if 0 <= number <= 36:
+                                            # If we can't get confidence, assume low confidence and reject
+                                            logger.debug(
+                                                "OCR detected %s but confidence unavailable - rejecting (requires >= %.2f)",
+                                                number,
+                                                self.ocr_confidence_threshold
+                                            )
+                                            continue
+                                    except ValueError:
+                                        continue
+                            except Exception:
                                 continue
 
             if _EASY_OCR_READER is not None:
@@ -249,31 +376,84 @@ class ScreenDetector:
                 h, w = rgb_scaled.shape[:2]
                 bbox = [[0, 0, w, 0, w, h, 0, h]]
                 try:
-                    results = _EASY_OCR_READER.recognize(
-                        rgb_scaled,
-                        horizontal_list=bbox,
-                        free_list=[],
-                        detail=0,
-                        allowlist="0123456789",
-                    )
-                except TypeError:
-                    # Fallback to standard readtext if API signature differs
+                    # Try to get detailed results with confidence
                     results = _EASY_OCR_READER.readtext(
                         rgb_scaled,
-                        detail=0,
+                        detail=1,  # Get confidence scores
                         paragraph=False,
                         allowlist="0123456789",
                     )
-                for text in results:
-                    digits = "".join(filter(str.isdigit, text))
-                    if digits:
-                        try:
-                            number = int(digits)
-                            if 0 <= number <= 36:
-                                logger.debug("EasyOCR detected %s from text '%s'", number, text.strip())
-                                return number
-                        except ValueError:
-                            continue
+                    for result in results:
+                        if isinstance(result, (list, tuple)) and len(result) >= 3:
+                            # EasyOCR format: (bbox, text, confidence)
+                            bbox_coords = result[0]
+                            text = result[1]
+                            confidence = float(result[2]) / 100.0  # Convert to 0-1 scale
+                            
+                            if confidence >= self.ocr_confidence_threshold:
+                                digits = "".join(filter(str.isdigit, text))
+                                if digits:
+                                    try:
+                                        number = int(digits)
+                                        if 0 <= number <= 36:
+                                            logger.debug(
+                                                "EasyOCR detected %s from text '%s' with confidence %.2f",
+                                                number,
+                                                text.strip(),
+                                                confidence
+                                            )
+                                            return (number, confidence)
+                                    except ValueError:
+                                        continue
+                        else:
+                            # Fallback for detail=0 format
+                            text = result if isinstance(result, str) else str(result)
+                            digits = "".join(filter(str.isdigit, text))
+                            if digits:
+                                try:
+                                    number = int(digits)
+                                    if 0 <= number <= 36:
+                                        # Without confidence, reject (requires >= 0.9)
+                                        logger.debug(
+                                            "EasyOCR detected %s but confidence unavailable - rejecting (requires >= %.2f)",
+                                            number,
+                                            self.ocr_confidence_threshold
+                                        )
+                                        continue
+                                except ValueError:
+                                    continue
+                except TypeError:
+                    # Fallback to standard readtext if API signature differs
+                    try:
+                        results = _EASY_OCR_READER.readtext(
+                            rgb_scaled,
+                            detail=1,
+                            paragraph=False,
+                            allowlist="0123456789",
+                        )
+                        for result in results:
+                            if isinstance(result, (list, tuple)) and len(result) >= 3:
+                                # EasyOCR format: (bbox, text, confidence)
+                                bbox_coords = result[0]
+                                text = result[1]
+                                confidence = float(result[2]) / 100.0  # Convert to 0-1 scale
+                                
+                                if confidence >= self.ocr_confidence_threshold:
+                                    digits = "".join(filter(str.isdigit, text))
+                                    if digits:
+                                        try:
+                                            number = int(digits)
+                                            if 0 <= number <= 36:
+                                                logger.debug(
+                                                    "EasyOCR detected %s with confidence %.2f",
+                                                    number,
+                                                    confidence
+                                                )
+                                                return (number, confidence)
+                                        except ValueError:
+                                            continue
+                    except Exception as e:
+                        logger.debug(f"EasyOCR fallback failed: {e}")
 
             logger.debug("OCR failed to extract valid number from snapshot.")
             return None
@@ -295,6 +475,11 @@ class ScreenDetector:
             Detected number (0-36) or None
         """
         try:
+            # Validate frame is not empty
+            if frame is None or frame.size == 0 or (hasattr(frame, 'shape') and (frame.shape[0] == 0 or frame.shape[1] == 0)):
+                logger.debug("Frame is empty, cannot detect number template")
+                return None
+            
             # Check if templates directory exists
             template_path_obj = Path(templates_dir)
             if not template_path_obj.exists():
@@ -393,9 +578,18 @@ class ScreenDetector:
             Color string ('red', 'black', 'green') or None
         """
         try:
+            # Validate frame is not empty
+            if frame is None or frame.size == 0 or (hasattr(frame, 'shape') and (frame.shape[0] == 0 or frame.shape[1] == 0)):
+                logger.debug("Frame is empty, cannot detect color")
+                return None
+            
             if region:
                 x, y, w, h = region
                 roi = frame[y:y+h, x:x+w]
+                # Validate ROI is not empty
+                if roi is None or roi.size == 0 or (hasattr(roi, 'shape') and (roi.shape[0] == 0 or roi.shape[1] == 0)):
+                    logger.debug("ROI is empty, cannot detect color")
+                    return None
             else:
                 roi = frame
             
@@ -500,6 +694,17 @@ class ScreenDetector:
         if frame is None:
             frame = self.capture_screen()
         
+        # Check if frame is None (video ended or capture failed)
+        if frame is None:
+            logger.warning("Frame capture returned None (video may have ended or capture failed)")
+            return {
+                "number": None,
+                "color": None,
+                "zero": False,
+                "confidence": 0.0,
+                "method": None
+            }
+        
         result = {
             "number": None,
             "color": None,
@@ -535,15 +740,23 @@ class ScreenDetector:
                 result["confidence"] = 0.9
                 result["method"] = "template"
         
-        # Fallback to OCR
+        # Fallback to OCR (only if templates failed)
         if result["number"] is None:
-            number = self.detect_number_ocr(roi)
-            if number is not None:
-                result["number"] = number
-                result["color"] = self.get_color_from_number(number)
-                result["zero"] = (number == 0)
-                result["confidence"] = 0.7
-                result["method"] = "ocr"
+            ocr_result = self.detect_number_ocr(roi)
+            if ocr_result is not None:
+                number, confidence = ocr_result
+                # Only accept OCR if confidence >= threshold (default 0.9)
+                if confidence >= self.ocr_confidence_threshold:
+                    result["number"] = number
+                    result["color"] = self.get_color_from_number(number)
+                    result["zero"] = (number == 0)
+                    result["confidence"] = confidence
+                    result["method"] = "ocr"
+                    logger.debug(f"OCR detection accepted: number={number}, confidence={confidence:.2f}")
+                else:
+                    logger.debug(
+                        f"OCR detection rejected: number={number}, confidence={confidence:.2f} < threshold={self.ocr_confidence_threshold}"
+                    )
         
         # If still no number, try color detection only
         if result["number"] is None:
@@ -584,17 +797,35 @@ class ScreenDetector:
         if result["number"] is None:
             return False
         
-        # Check confidence threshold
+        # For OCR results, require confidence >= 0.9 (strict requirement)
+        if result.get("method") == "ocr":
+            if result["confidence"] < self.ocr_confidence_threshold:
+                logger.warning(
+                    f"OCR result rejected: confidence {result['confidence']:.2f} < threshold {self.ocr_confidence_threshold}"
+                )
+                return False
+        
+        # Check confidence threshold (general minimum)
         if result["confidence"] < 0.5:
             return False
         
         # Check if result is consistent with recent history
         if len(self.detection_history) > 1:
             # Should not have same number twice in a row (unless very confident)
-            if result["number"] == self.detection_history[-1].get("number"):
+            last_number = self.detection_history[-1].get("number")
+            if result["number"] == last_number:
+                # Reject if confidence is below threshold
                 if result["confidence"] < 0.9:
-                    logger.warning("Same number detected twice - may be error")
+                    logger.warning(
+                        "Same number detected twice - may be error. "
+                        f"Number: {result['number']}, Confidence: {result['confidence']:.2f} < 0.9"
+                    )
                     return False
+                else:
+                    # Even with high confidence, log it for awareness
+                    logger.debug(
+                        f"Same number detected twice but high confidence ({result['confidence']:.2f}) - accepting"
+                    )
         
         return True
 

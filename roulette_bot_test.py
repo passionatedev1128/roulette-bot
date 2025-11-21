@@ -199,10 +199,24 @@ def test_video_colab(video_path, config, frame_skip=1, max_frames=None):
         processed_count += 1
         
         try:
+            # Detect result (pass frame directly to detector)
             result = detector.detect_result(frame)
+            
+            # Only process if we got a valid number
             if result.get('number') is not None:
-                successful_detections += 1
-                status = "[OK]"
+                detected_number = result.get('number')
+                
+                # Skip if same number as last detection (number still on screen - normal in video)
+                # Note: This test doesn't track last_detected_number, so it will show all detections
+                # For production use, add: if detected_number == last_detected_number: continue
+                
+                # Validate result
+                if not detector.validate_result(result):
+                    # Validation failed - skip this detection
+                    status = "[VALIDATION FAILED]"
+                else:
+                    successful_detections += 1
+                    status = "[OK]"
             else:
                 status = "[FAIL]"
             

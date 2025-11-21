@@ -18,11 +18,11 @@ const PerformanceCharts = ({ dailyStats, strategyStats, galeStats }) => {
   const strategyData = strategyStats?.stats ?? [];
 
   return (
-    <div className="charts-grid">
+    <>
       <div className="panel">
         <div className="panel-header">
-          <h2>Daily Performance</h2>
-          <span className="panel-subtitle">Profit/Loss by day</span>
+          <h2>Desempenho diário</h2>
+          <span className="panel-subtitle">Lucro/prejuízo por dia</span>
         </div>
         {dailyData.length ? (
           <ResponsiveContainer width="100%" height={250}>
@@ -32,77 +32,64 @@ const PerformanceCharts = ({ dailyStats, strategyStats, galeStats }) => {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="profit_loss" stroke="#3b82f6" name="Profit/Loss" strokeWidth={2} />
-              <Line type="monotone" dataKey="wins" stroke="#10b981" name="Wins" strokeWidth={2} />
-              <Line type="monotone" dataKey="losses" stroke="#ef4444" name="Losses" strokeWidth={2} />
+              <Line 
+                type="monotone" 
+                dataKey="profit_loss" 
+                stroke="#6366f1" 
+                name="Lucro/Prejuízo" 
+                strokeWidth={3}
+                dot={{ fill: '#6366f1', r: 4 }}
+                activeDot={{ r: 6 }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="wins" 
+                stroke="#10b981" 
+                name="Vitórias" 
+                strokeWidth={2}
+                dot={{ fill: '#10b981', r: 3 }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="losses" 
+                stroke="#ef4444" 
+                name="Derrotas" 
+                strokeWidth={2}
+                dot={{ fill: '#ef4444', r: 3 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="empty-state">No statistics yet.</div>
+          <div className="empty-state">Sem estatísticas ainda.</div>
         )}
       </div>
 
-      <div className="panel">
+      <div className="panel gale-performance-panel">
         <div className="panel-header">
-          <h2>Gale Performance</h2>
-          <span className="panel-subtitle">Win/Loss by gale step</span>
+          <h2>Desempenho por gale</h2>
+          <span className="panel-subtitle">Vitórias/derrotas por etapa do gale</span>
         </div>
         {galeData.length ? (
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={galeData}>
+            <BarChart data={galeData} margin={{ top: 20, right: 30, left: 30, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="gale_step" label={{ value: 'Gale Step', position: 'insideBottom', offset: -5 }} />
+              <XAxis 
+                dataKey="gale_step" 
+                label={{ value: '', position: 'insideBottom', offset: -5 }}
+                tick={{ fontSize: 12 }}
+              />
               <YAxis />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="wins" fill="#10b981" name="Wins" />
-              <Bar dataKey="losses" fill="#ef4444" name="Losses" />
+              <Legend wrapperStyle={{ paddingTop: '20px' }} />
+              <Bar dataKey="wins" fill="#10b981" name="Vitórias" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="losses" fill="#ef4444" name="Derrotas" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="empty-state">No gale data yet.</div>
+          <div className="empty-state">Sem dados de gale ainda.</div>
         )}
       </div>
-
-      <div className="panel">
-        <div className="panel-header">
-          <h2>Strategy Breakdown</h2>
-          <span className="panel-subtitle">Win rate by strategy</span>
-        </div>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Strategy</th>
-                <th>Bets</th>
-                <th>Wins</th>
-                <th>Losses</th>
-                <th>Win Rate</th>
-                <th>P/L</th>
-              </tr>
-            </thead>
-            <tbody>
-              {strategyData.length ? (
-                strategyData.map((row) => (
-                  <tr key={row.strategy}>
-                    <td>{row.strategy}</td>
-                    <td>{row.bets}</td>
-                    <td>{row.wins}</td>
-                    <td>{row.losses}</td>
-                    <td>{row.win_rate}%</td>
-                    <td>{row.profit_loss.toFixed(2)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="empty-state">No strategy data yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    </>
   );
 };
 

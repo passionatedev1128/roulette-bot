@@ -5,9 +5,11 @@ Coordinates all modules to run the roulette bot.
 
 import time
 import logging
+import sys
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 from pathlib import Path
+import numpy as np
 
 from .detection import ScreenDetector
 from .detection.game_state_detector import GameStateDetector, GameState
@@ -88,6 +90,14 @@ class RouletteBot:
         self.strategy = self._create_strategy()
         self.bet_controller = BetController(self.config)
         self.logger = RouletteLogger(self.config)
+        detection_settings = self.config.get('detection', {})
+        self.min_result_gap_seconds = float(detection_settings.get('min_result_gap_seconds', 3.0))
+        # Frame gap: if same number appears for 60-90 frames, ignore it (default: 90)
+        self.min_result_gap_frames = int(detection_settings.get('min_result_gap_frames', 90))
+        self.last_result_signature: Optional[Tuple[Optional[int], Optional[str]]] = None
+        self.last_result_time: float = 0.0
+        self.last_result_frame_index: Optional[int] = None
+        self.last_processed_result: Optional[Tuple[Optional[int], Optional[str]]] = None  # Track last actually processed result
         
         # Initialize game state detector (optional)
         enable_game_state = self.config.get('detection', {}).get('enable_game_state', False)
@@ -103,6 +113,13 @@ class RouletteBot:
         self.current_balance = self.config.get('risk', {}).get('initial_balance', 1000.0)
         self.initial_balance = self.current_balance
         self.last_maintenance_bet_time = time.time()
+        
+        # Track pending bet (bet placed but not yet resolved)
+        self.pending_bet: Optional[Dict] = None
+        
+        # Frame skipping configuration
+        self.frame_skip_interval = self.config.get('detection', {}).get('frame_skip_interval', 10)
+        self.frame_counter = 0  # Track frames to determine when to process
         
         # Stop conditions tracking
         self.winning_rounds = 0
@@ -153,14 +170,62 @@ class RouletteBot:
     def _setup_logging(self):
         """Setup logging configuration."""
         log_level = self.config.get('logging', {}).get('log_level', 'INFO')
-        logging.basicConfig(
-            level=getattr(logging, log_level),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler('bot.log'),
-                logging.StreamHandler()
-            ]
+        
+        # Create backend directory if it doesn't exist
+        backend_dir = Path(__file__).parent.parent
+        backend_dir.mkdir(exist_ok=True)
+        
+        # Create logs directory in backend
+        logs_dir = backend_dir / 'logs'
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Create log file with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = logs_dir / f"bot_log_{timestamp}.txt"
+        
+        # Configure root logger to capture all logs
+        root_logger = logging.getLogger()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # Check if a file handler for this specific file already exists
+        log_file_str = str(log_file)
+        has_file_handler = any(
+            isinstance(h, logging.FileHandler) and 
+            hasattr(h, 'baseFilename') and 
+            log_file_str in h.baseFilename 
+            for h in root_logger.handlers
         )
+
+        if not has_file_handler:
+            # Create a custom handler that flushes immediately for real-time logging
+            class ImmediateFlushHandler(logging.FileHandler):
+                def emit(self, record):
+                    super().emit(record)
+                    self.flush()
+            
+            # File handler with immediate flushing - captures all logs and errors
+            immediate_handler = ImmediateFlushHandler(log_file, encoding='utf-8', mode='a')
+            immediate_handler.setLevel(logging.DEBUG)  # Capture all levels in file
+            immediate_handler.setFormatter(formatter)
+            root_logger.addHandler(immediate_handler)
+
+        # Set root logger level (but don't clear existing handlers)
+        root_logger.setLevel(getattr(logging, log_level))
+
+        # Ensure a dedicated console handler exists so bot logs are always visible in terminal output
+        console_handler_name = "bot_console_handler"
+        has_console_handler = any(
+            isinstance(h, logging.StreamHandler) and getattr(h, "name", "") == console_handler_name
+            for h in root_logger.handlers
+        )
+        if not has_console_handler:
+            console_handler = logging.StreamHandler(stream=sys.stdout)
+            console_handler.setLevel(getattr(logging, log_level))
+            console_handler.setFormatter(formatter)
+            console_handler.set_name(console_handler_name)
+            root_logger.addHandler(console_handler)
+        
+        logger.info(f"Bot logging configured: Logs saved to {log_file}")
     
     def _create_strategy(self) -> StrategyBase:
         """Create strategy instance based on configuration."""
@@ -179,15 +244,18 @@ class RouletteBot:
             logger.warning(f"Unknown strategy type: {strategy_type}, using Martingale")
             return MartingaleStrategy(strategy_config)
     
-    def detect_result(self) -> Optional[Dict]:
+    def detect_result(self, frame: Optional[np.ndarray] = None) -> Optional[Dict]:
         """
         Detect current roulette result.
+        
+        Args:
+            frame: Optional frame to use for detection. If None, detector will capture its own.
         
         Returns:
             Detection result or None if failed
         """
         try:
-            result = self.detector.detect_result()
+            result = self.detector.detect_result(frame)
             
             # Validate result
             if self.detector.validate_result(result):
@@ -281,12 +349,38 @@ class RouletteBot:
             zero_handling = self.strategy.handle_zero(self.result_history, self.current_balance)
             logger.info(f"Zero detected, handling: {zero_handling}")
         
-        # Calculate bet
+        # Log current strategy state before calculating bet (for Even/Odd strategy)
+        if isinstance(self.strategy, EvenOddStrategy):
+            logger.info(
+                f"Before bet calculation: Even streak={self.strategy.current_even_streak}, "
+                f"Odd streak={self.strategy.current_odd_streak}, "
+                f"streak_length required={self.strategy.streak_length}, "
+                f"cycle_active={self.strategy.cycle_active}, number={result.get('number')}"
+            )
+        
+        # Calculate bet (strategy will update streaks internally)
         bet_decision = self.strategy.calculate_bet(
             self.result_history,
             self.current_balance,
             result
         )
+        
+        # Log why bet decision was made or not
+        if bet_decision:
+            logger.info(
+                f"Bet decision: {bet_decision.get('bet_type')} for {bet_decision.get('bet_amount')} "
+                f"(reason: {bet_decision.get('reason', 'N/A')})"
+            )
+        else:
+            if isinstance(self.strategy, EvenOddStrategy):
+                logger.info(
+                    f"No bet decision: Even streak={self.strategy.current_even_streak}, "
+                    f"Odd streak={self.strategy.current_odd_streak}, "
+                    f"streak_length required={self.strategy.streak_length}, "
+                    f"cycle_active={self.strategy.cycle_active}"
+                )
+            else:
+                logger.info("No bet decision made by strategy")
         
         # Place bet if decision made
         bet_result = None
@@ -570,6 +664,22 @@ class RouletteBot:
 
         self._emit_event("status_change", {"status": "running"})
         
+        # Check if video has frames (if using FrameDetector)
+        if hasattr(self.detector, 'cap') and hasattr(self.detector, 'video_path'):
+            test_frame = self.detector.capture_screen()
+            if test_frame is None:
+                logger.error(
+                    "Cannot start bot: Video file has no readable frames. "
+                    "Please verify the video file is valid: %s",
+                    getattr(self.detector, 'video_path', 'unknown')
+                )
+                self.running = False
+                self._emit_event("status_change", {"status": "error", "error": "Video file has no frames"})
+                return
+            # Reset to beginning after test
+            if hasattr(self.detector, 'restart_video'):
+                self.detector.restart_video()
+        
         try:
             while self.running:
                 # Check stop conditions
@@ -581,16 +691,117 @@ class RouletteBot:
                 if self.check_maintenance_bet():
                     self.place_maintenance_bet()
                 
-                # Capture frame for game state detection (if enabled)
+                # Capture frame (needed for both game state detection and result detection)
                 frame = None
-                if self.game_state_detector:
-                    try:
-                        frame = self.detector.capture_screen()
-                    except Exception as e:
-                        logger.debug(f"Failed to capture frame for state detection: {e}")
+                try:
+                    frame = self.detector.capture_screen()
+                    if frame is None:
+                        logger.info("Video ended or frame capture failed. Stopping bot.")
+                        break
+                except Exception as e:
+                    logger.error(f"Failed to capture frame: {e}")
+                    break
                 
-                # Detect result
-                result = self.detect_result()
+                # Frame skipping: only process every Nth frame
+                self.frame_counter += 1
+                if self.frame_counter % self.frame_skip_interval != 0:
+                    # Skip this frame
+                    time.sleep(0.1)  # Small delay to avoid tight loop
+                    continue
+                
+                # Detect result using the captured frame
+                result = self.detect_result(frame)
+
+                # Determine frame index/context for logging
+                frame_index: Optional[int] = None
+                frame_context = ""
+                if hasattr(self.detector, "get_current_frame_number"):
+                    try:
+                        frame_index = self.detector.get_current_frame_number()
+                        if frame_index is not None and frame_index >= 0:
+                            frame_context = f" (frame {frame_index})"
+                    except Exception:  # pragma: no cover - best-effort logging
+                        frame_context = ""
+                        frame_index = None
+
+                duplicate_detection = False
+                if result:
+                    result_signature = (result.get("number"), result.get("color"))
+                    now_ts = time.time()
+                    
+                    # Check against last PROCESSED result (most strict - already sent to frontend)
+                    if self.last_processed_result == result_signature:
+                        duplicate_detection = True
+                        logger.debug(
+                            f"Duplicate result ignored{frame_context}: "
+                            f"result {result_signature} was already processed and sent to frontend"
+                        )
+                    # Check time/frame gaps for sequential detection (same number for 60-90 frames)
+                    # This handles startup scenarios where same number appears for many frames
+                    elif self.last_result_signature == result_signature:
+                        within_time_gap = (now_ts - self.last_result_time) < self.min_result_gap_seconds
+
+                        within_frame_gap = False
+                        if (
+                            frame_index is not None
+                            and self.last_result_frame_index is not None
+                            and frame_index >= 0
+                            and self.last_result_frame_index >= 0
+                        ):
+                            frame_delta = frame_index - self.last_result_frame_index
+                            if frame_delta < 0:
+                                # Video restarted or frame counter reset - reset tracking
+                                self.last_result_frame_index = frame_index
+                                self.last_result_signature = result_signature
+                                self.last_result_time = now_ts
+                            else:
+                                within_frame_gap = (
+                                    frame_delta <= self.min_result_gap_frames
+                                )
+
+                        if within_time_gap or within_frame_gap:
+                            duplicate_detection = True
+                            logger.debug(
+                                f"Duplicate detection ignored{frame_context}: "
+                                f"same result {result_signature} detected again within gap "
+                                f"(time gap: {now_ts - self.last_result_time:.2f}s, "
+                                f"frame gap: {frame_delta if frame_index is not None and self.last_result_frame_index is not None else 'N/A'}/{self.min_result_gap_frames} frames) - NOT sent to frontend"
+                            )
+                        else:
+                            # Same result but enough time/frames passed - treat as new result
+                            logger.debug(f"Same result {result_signature} detected but enough time/frames passed ({frame_delta if frame_index is not None and self.last_result_frame_index is not None else 'N/A'} frames), processing as new")
+                            self.last_result_signature = result_signature
+                            self.last_result_time = now_ts
+                            if frame_index is not None and frame_index >= 0:
+                                self.last_result_frame_index = frame_index
+                    else:
+                        # Different result - always process
+                        self.last_result_signature = result_signature
+                        self.last_result_time = now_ts
+                        if frame_index is not None and frame_index >= 0:
+                            self.last_result_frame_index = frame_index
+
+                # CRITICAL: Skip all processing if duplicate detected - prevents events from being sent to frontend
+                if duplicate_detection:
+                    logger.debug(
+                        "Duplicate detection detected%s; skipping ALL processing to avoid sending to frontend",
+                        frame_context,
+                    )
+                    time.sleep(0.1)  # Small delay to avoid tight loop
+                    continue
+
+                if result:
+                    detection_method = result.get("detection_method") or result.get("method") or "unknown"
+                    logger.info(
+                        "Detection succeeded%s: number=%s color=%s method=%s confidence=%s",
+                        frame_context,
+                        result.get("number"),
+                        result.get("color"),
+                        detection_method,
+                        result.get("confidence"),
+                    )
+                else:
+                    logger.warning(f"No detection result{frame_context}; will retry")
                 
                 # Detect game state (if enabled)
                 game_state = None
@@ -601,8 +812,31 @@ class RouletteBot:
                 # Only process result if game state allows (or if state detection disabled)
                 if result and (not self.game_state_detector or 
                               self.game_state_detector.is_result_ready(game_state)):
-                    # Process spin
+                    # First, resolve any pending bet from previous spin
+                    if self.pending_bet:
+                        self.update_after_round(
+                            {"spin_number": self.pending_bet.get('spin_number', self.spin_number)},
+                            result.get('number')
+                        )
+                        self.pending_bet = None
+                    
+                    # Process spin (detect result, calculate bet, place bet)
                     spin_result = self.process_spin(result)
+                    
+                    # Store pending bet if one was placed
+                    if spin_result.get('bet_decision') and spin_result.get('bet_decision').get('bet_amount', 0) > 0:
+                        self.pending_bet = {
+                            'spin_number': self.spin_number,
+                            'bet_type': spin_result.get('bet_decision').get('bet_type'),
+                            'bet_amount': spin_result.get('bet_decision').get('bet_amount'),
+                            'gale_step': self.strategy.gale_step
+                        }
+                    
+                    # Mark this result as processed to prevent duplicates
+                    if result:
+                        result_signature = (result.get("number"), result.get("color"))
+                        self.last_processed_result = result_signature
+                        logger.info(f"Spin {self.spin_number} processed: number={result.get('number')}, color={result.get('color')}")
                     
                     # Wait for round to complete
                     # In real implementation, this would wait for next spin indicator

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+from datetime import datetime
+from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI
@@ -13,9 +16,69 @@ from .bot_manager import bot_manager
 from .routes import config, control, results, stats, status
 from .websocket import router as websocket_router
 
+# Setup server-level logging
+def _setup_server_logging():
+    """Setup logging for the server to save all logs to a file."""
+    # Create backend directory if it doesn't exist
+    backend_dir = Path(__file__).parent.parent
+    backend_dir.mkdir(exist_ok=True)
+    
+    # Create logs directory in backend
+    logs_dir = backend_dir / 'logs'
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Create log file with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = logs_dir / f"server_log_{timestamp}.txt"
+    
+    # Configure root logger to capture all logs
+    root_logger = logging.getLogger()
+    
+    # Check if a file handler for this specific file already exists
+    log_file_str = str(log_file)
+    has_file_handler = any(
+        isinstance(h, logging.FileHandler) and 
+        hasattr(h, 'baseFilename') and 
+        log_file_str in h.baseFilename 
+        for h in root_logger.handlers
+    )
+    
+    if not has_file_handler:
+        # Create formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        
+        # Create a custom handler that flushes immediately for real-time logging
+        class ImmediateFlushHandler(logging.FileHandler):
+            def emit(self, record):
+                super().emit(record)
+                self.flush()
+        
+        # File handler with immediate flushing - captures all logs and errors
+        file_handler = ImmediateFlushHandler(log_file, encoding='utf-8', mode='a')
+        file_handler.setLevel(logging.DEBUG)  # Capture all levels in file
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+        
+        # Ensure root logger level is set to capture all logs
+        if root_logger.level > logging.DEBUG:
+            root_logger.setLevel(logging.DEBUG)
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"Server logging configured: Logs saved to {log_file}")
+
+# Setup logging on module import
+_setup_server_logging()
+
 
 def _get_cors_origins() -> List[str]:
-    origins = os.getenv("ROULETTE_WEB_CORS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    """
+    Get CORS allowed origins from environment variable.
+    Default includes local development origins.
+    For production, set ROULETTE_WEB_CORS with your Vercel domain, e.g.:
+    ROULETTE_WEB_CORS="https://your-app.vercel.app,http://localhost:3000"
+    """
+    default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    origins = os.getenv("ROULETTE_WEB_CORS", default_origins).split(",")
     return [origin.strip() for origin in origins if origin.strip()]
 
 

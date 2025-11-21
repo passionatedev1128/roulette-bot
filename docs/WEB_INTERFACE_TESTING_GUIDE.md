@@ -72,13 +72,13 @@ npm run dev
 ```
   VITE v4.4.11  ready in 500 ms
 
-  ➜  Local:   http://localhost:5173/
+  ➜  Local:   http://localhost:3000/
   ➜  Network: use --host to expose
   ➜  press h to show help
 ```
 
 **Access the dashboard:**
-- Open browser: http://localhost:5173
+- Open browser: http://localhost:3000
 - The React app should load automatically
 
 ## Testing Checklist
@@ -217,7 +217,7 @@ The bot should emit these events:
    ```
 
 3. **Open Dashboard**
-   - Visit: http://localhost:5173
+   - Visit: http://localhost:3000
 
 4. **Test Bot Control**
    - Click "Start" button
@@ -259,12 +259,12 @@ pip install fastapi uvicorn websockets
 
 ### Issue 3: CORS Errors
 
-**Error:** `Access to fetch at 'http://localhost:8000' from origin 'http://localhost:5173' has been blocked by CORS policy`
+**Error:** `Access to fetch at 'http://localhost:8000' from origin 'http://localhost:3000' has been blocked by CORS policy`
 
 **Solution:**
-- Check `backend/server/app.py` - CORS should allow `http://localhost:5173`
+- Check `backend/server/app.py` - CORS should allow `http://localhost:3000`
 - Verify backend is running on port 8000
-- Verify frontend is running on port 5173
+- Verify frontend is running on port 3000
 
 ### Issue 4: WebSocket Connection Failed
 
@@ -405,5 +405,5 @@ cd web && npm run dev
 python simulate_strategy.py video.mp4 --config config/default_config.json
 ```
 
-Then open: http://localhost:5173
+Then open: http://localhost:3000
 

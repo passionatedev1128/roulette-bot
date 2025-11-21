@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
 const modes = [
-  'Maintenance Mode',
-  'Full Auto Mode',
-  'Manual Analysis Mode',
+  { value: 'Maintenance Mode', label: 'Modo de manutenção' },
+  { value: 'Full Auto Mode', label: 'Modo totalmente automático' },
+  { value: 'Manual Analysis Mode', label: 'Modo de análise manual' },
 ];
 
 const ModeControls = ({ statusData, onStart, onStop, onModeChange, starting, stopping }) => {
-  const [selectedMode, setSelectedMode] = useState(modes[1]);
+  const [selectedMode, setSelectedMode] = useState(modes[1].value);
   const [testMode, setTestMode] = useState(false);
 
   useEffect(() => {
@@ -31,28 +31,32 @@ const ModeControls = ({ statusData, onStart, onStop, onModeChange, starting, sto
   return (
     <div className="panel">
       <div className="panel-header">
-        <h2>Bot Controls</h2>
-        <span className="panel-subtitle">Start, pause, and select operating mode</span>
+        <h2>Controles do bot</h2>
+        <span className="panel-subtitle">Inicie, pause e escolha o modo de operação</span>
       </div>
       <div className="controls-grid">
         <label>
-          <span>Mode</span>
-          <select value={selectedMode} onChange={handleModeChange}>
+          <select value={selectedMode} onChange={handleModeChange} disabled={isRunning || starting}>
             {modes.map((mode) => (
-              <option key={mode} value={mode}>{mode}</option>
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
             ))}
           </select>
         </label>
         <label className="checkbox">
-          <input type="checkbox" checked={testMode} onChange={(event) => setTestMode(event.target.checked)} />
-          <span>Test Mode (simulation)</span>
+          <input 
+            type="checkbox" 
+            checked={testMode} 
+            onChange={(event) => setTestMode(event.target.checked)}
+            disabled={isRunning || starting}
+          />
+          <span>Modo de teste (simulação)</span>
         </label>
         <div className="control-buttons">
           <button type="button" className="primary" onClick={handleStart} disabled={isRunning || starting}>
-            {starting ? 'Starting…' : 'Start Bot'}
+            {starting ? 'Iniciando…' : 'Iniciar bot'}
           </button>
           <button type="button" className="secondary" onClick={onStop} disabled={!isRunning || stopping}>
-            {stopping ? 'Stopping…' : 'Stop Bot'}
+            {stopping ? 'Parando…' : 'Parar bot'}
           </button>
         </div>
       </div>

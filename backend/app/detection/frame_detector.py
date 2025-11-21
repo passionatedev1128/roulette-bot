@@ -15,27 +15,74 @@ logger = logging.getLogger(__name__)
 class FrameDetector(ScreenDetector):
     """Detector that reads frames from a video file (cv2.VideoCapture)."""
 
-    def __init__(self, config, video_path: str):
+    def __init__(self, config, video_path: str, start_frame: int = 1000):
         super().__init__(config)
         self.video_path = video_path
+        self.start_frame = start_frame
         self.cap = cv2.VideoCapture(video_path)
         if not self.cap.isOpened():
             raise RuntimeError(f"Unable to open video source: {video_path}")
         self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        logger.info("FrameDetector initialized with %s (%dx%d)", video_path, self.frame_width, self.frame_height)
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        logger.info("FrameDetector initialized with %s (%dx%d, %d frames, %.2f fps)", 
+                   video_path, self.frame_width, self.frame_height, total_frames, fps)
+        
+        # Validate start_frame
+        if start_frame >= total_frames:
+            logger.warning("Start frame (%d) >= total frames (%d), using frame 0 instead", start_frame, total_frames)
+            self.start_frame = 0
+        elif start_frame < 0:
+            logger.warning("Start frame (%d) is negative, using frame 0 instead", start_frame)
+            self.start_frame = 0
+        
+        # Verify we can read at least one frame
+        ret, test_frame = self.cap.read()
+        if not ret or test_frame is None:
+            logger.error(
+                "Video file appears to be empty or unreadable. No frames available. "
+                "Video info: %d frames, %dx%d, %.2f fps. "
+                "Please verify the video file is valid and contains frames.",
+                total_frames, self.frame_width, self.frame_height, fps
+            )
+            # Reset to beginning for actual use
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        else:
+            # Set to start_frame after test read
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.start_frame)
+            logger.info("Video file verified: can read frames successfully (%d frames available)", total_frames)
+            logger.info("Starting from frame %d", self.start_frame)
 
+    def get_current_frame_number(self) -> int:
+        """Get the current frame number (0-based index)."""
+        if self.cap:
+            return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        return -1
+    
     def capture_screen(self) -> Optional[cv2.Mat]:
-        """Return the next frame from the video source."""
+        """
+        Return the next frame from the video source.
+        
+        Returns None when video ends (does not auto-restart).
+        For continuous looping, use restart_video() and call capture_screen() again.
+        """
+        frame_number = self.get_current_frame_number()
         ret, frame = self.cap.read()
         if not ret:
-            logger.info("Video ended, restarting: %s", self.video_path)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            ret, frame = self.cap.read()
-            if not ret:
-                logger.warning("Failed to read frame after restart.")
-                return None
+            # Video has ended - return None instead of restarting
+            # This allows callers to detect end of video and handle it appropriately
+            logger.debug("Video ended at frame %d: %s", frame_number, self.video_path)
+            return None
+        # Log the frame number that was just read
+        logger.info("Processing frame %d", frame_number)
         return frame
+    
+    def restart_video(self):
+        """Restart video from the start_frame."""
+        if self.cap:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.start_frame)
+            logger.info("Video restarted from frame %d: %s", self.start_frame, self.video_path)
 
     def release(self):
         """Release the video capture."""

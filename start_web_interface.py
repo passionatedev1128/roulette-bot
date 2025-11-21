@@ -24,7 +24,8 @@ def check_dependencies():
     
     # Check Node.js and npm
     try:
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+        # Use shell=True on Windows to find node in PATH
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, shell=True)
         if result.returncode == 0:
             print(f"✓ Node.js installed: {result.stdout.strip()}")
         else:
@@ -32,6 +33,7 @@ def check_dependencies():
             return False
     except FileNotFoundError:
         print("❌ Node.js not found. Install from: https://nodejs.org/")
+        print("   After installation, restart your terminal and try again.")
         return False
     
     # Check if web/node_modules exists
@@ -70,14 +72,48 @@ def start_frontend():
     print("\n" + "=" * 60)
     print("Starting Frontend Server...")
     print("=" * 60)
-    print("Frontend will run on: http://localhost:5173")
+    print("Frontend will run on: http://localhost:3000")
     print("Press CTRL+C to stop\n")
     
     web_dir = Path("web")
+    if not web_dir.exists():
+        print(f"❌ Error: 'web' directory not found!")
+        print(f"   Current directory: {os.getcwd()}")
+        return
+    
+    # Check if node_modules exists
+    node_modules = web_dir / "node_modules"
+    if not node_modules.exists():
+        print("⚠️  Warning: node_modules not found!")
+        print("   Run 'cd web && npm install' first")
+        response = input("   Install dependencies now? (y/n): ").strip().lower()
+        if response == 'y':
+            os.chdir(web_dir)
+            try:
+                subprocess.run(["npm", "install"], shell=True, check=True)
+                print("✅ Dependencies installed!")
+            except subprocess.CalledProcessError:
+                print("❌ Failed to install dependencies")
+                os.chdir("..")
+                return
+            except FileNotFoundError:
+                print("❌ npm not found. Please install Node.js from https://nodejs.org/")
+                os.chdir("..")
+                return
+            os.chdir("..")
+        else:
+            print("❌ Cannot start frontend without dependencies")
+            return
+    
     os.chdir(web_dir)
     
     try:
-        subprocess.run(["npm", "run", "dev"])
+        # Use shell=True on Windows to find npm in PATH
+        subprocess.run(["npm", "run", "dev"], shell=True)
+    except FileNotFoundError:
+        print("\n❌ Error: npm not found!")
+        print("   Please install Node.js from: https://nodejs.org/")
+        print("   After installation, restart your terminal and try again.")
     except KeyboardInterrupt:
         print("\nFrontend server stopped.")
     finally:

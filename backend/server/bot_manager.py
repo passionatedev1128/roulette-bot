@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +14,7 @@ import pandas as pd
 
 from backend.app.bot import RouletteBot
 from backend.app.config_loader import ConfigLoader
+from backend.app.detection.frame_detector import FrameDetector
 
 from .events import EventDispatcher
 
@@ -123,13 +126,43 @@ class BotManager:
 
     def _create_bot(self) -> RouletteBot:
         """Instantiate a RouletteBot with current configuration."""
-
-        return RouletteBot(
+        
+        bot = RouletteBot(
             str(self.config_path),
             event_dispatcher=self.event_dispatcher,
             state_callback=self._state_callback,
             test_mode=self._test_mode,
         )
+        
+        # Replace detector with FrameDetector if video path is set via environment variable
+        video_path = os.environ.get('BOT_VIDEO_PATH')
+        
+        # Also check for common video file names in project root if env var not set
+        if not video_path:
+            project_root = Path(self.config_path).parent.parent if Path(self.config_path).parent.name == 'config' else Path(self.config_path).parent
+            common_video_names = ['roleta_brazileria.mp4', 'roulette_video.mp4', 'test_video.mp4']
+            for video_name in common_video_names:
+                potential_path = project_root / video_name
+                if potential_path.exists():
+                    video_path = str(potential_path)
+                    logger.info(f"Auto-detected video file: {video_path}")
+                    break
+        
+        if video_path and Path(video_path).exists():
+            # Start from frame 1000 by default
+            start_frame = int(os.environ.get('BOT_START_FRAME', '1000'))
+            frame_detector = FrameDetector(self._config, video_path, start_frame=start_frame)
+            bot.detector = frame_detector
+            logger = logging.getLogger(__name__)
+            logger.info(f"Using video file for input: {video_path} (start_frame={start_frame})")
+        else:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "No video file configured. Bot will use screen capture. "
+                "To use video, set BOT_VIDEO_PATH environment variable or place 'roleta_brazileria.mp4' in project root."
+            )
+        
+        return bot
 
     def start_bot(self, mode: Optional[str] = None, test_mode: bool = False) -> None:
         """Start the bot in a background thread."""
@@ -303,10 +336,15 @@ class BotManager:
         grouped = df.groupby("date")
         stats = []
         for date, group in grouped:
-            bets = group[group["bet_type"].notna()]
-            wins = len(group[group["result"] == "win"])
-            losses = len(group[group["result"] == "loss"])
-            profit_series = group["profit_loss"] if "profit_loss" in group else pd.Series(dtype=float)
+            # Check if bet_type column exists before filtering
+            if "bet_type" in group.columns:
+                bets = group[group["bet_type"].notna()]
+            else:
+                bets = group  # If no bet_type column, consider all rows as bets
+            
+            wins = len(group[group["result"] == "win"]) if "result" in group.columns else 0
+            losses = len(group[group["result"] == "loss"]) if "result" in group.columns else 0
+            profit_series = group["profit_loss"] if "profit_loss" in group.columns else pd.Series(dtype=float)
             stats.append(
                 {
                     "date": date.isoformat(),
@@ -324,16 +362,24 @@ class BotManager:
         df = self._load_log_dataframe()
         if df is None or df.empty:
             return []
+        
+        if "strategy" not in df.columns:
+            return []
 
         grouped = df.groupby("strategy")
         stats = []
         for strategy, group in grouped:
-            bets = group[group["bet_type"].notna()]
-            wins = len(group[group["result"] == "win"])
-            losses = len(group[group["result"] == "loss"])
+            # Check if bet_type column exists before filtering
+            if "bet_type" in group.columns:
+                bets = group[group["bet_type"].notna()]
+            else:
+                bets = group  # If no bet_type column, consider all rows as bets
+            
+            wins = len(group[group["result"] == "win"]) if "result" in group.columns else 0
+            losses = len(group[group["result"] == "loss"]) if "result" in group.columns else 0
             total_bets = len(bets)
             win_rate = (wins / total_bets * 100) if total_bets else 0.0
-            profit_loss = group["profit_loss"].sum() if "profit_loss" in group else 0.0
+            profit_loss = group["profit_loss"].sum() if "profit_loss" in group.columns else 0.0
             stats.append(
                 {
                     "strategy": strategy,
@@ -349,15 +395,15 @@ class BotManager:
 
     def get_gale_stats(self) -> List[Dict[str, Any]]:
         df = self._load_log_dataframe()
-        if df is None or df.empty or "gale_step" not in df:
+        if df is None or df.empty or "gale_step" not in df.columns:
             return []
 
         grouped = df.groupby("gale_step")
         stats = []
         for gale_step, group in grouped:
-            wins = len(group[group["result"] == "win"])
-            losses = len(group[group["result"] == "loss"])
-            profit_loss = group["profit_loss"].sum() if "profit_loss" in group else 0.0
+            wins = len(group[group["result"] == "win"]) if "result" in group.columns else 0
+            losses = len(group[group["result"] == "loss"]) if "result" in group.columns else 0
+            profit_loss = group["profit_loss"].sum() if "profit_loss" in group.columns else 0.0
             stats.append(
                 {
                     "gale_step": int(gale_step) if pd.notna(gale_step) else 0,
@@ -401,13 +447,13 @@ class BotManager:
 
     def _calculate_today_profit(self) -> float:
         df = self._load_log_dataframe()
-        if df is None or df.empty or "timestamp" not in df:
+        if df is None or df.empty or "timestamp" not in df.columns:
             return 0.0
 
         df["date"] = pd.to_datetime(df["timestamp"]).dt.date
         today = datetime.now().date()
         today_rows = df[df["date"] == today]
-        if "profit_loss" not in today_rows:
+        if "profit_loss" not in today_rows.columns:
             return 0.0
         return float(today_rows["profit_loss"].sum())
 

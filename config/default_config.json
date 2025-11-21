@@ -2,15 +2,22 @@
   "detection": {
   "screen_region": [953, 511, 57, 55],
   "winning_templates_dir": "winning-number_templates/",
-  "winning_template_threshold": 0.65
+  "winning_template_threshold": 0.65,
+  "ocr_confidence_threshold": 0.9,
+  "min_result_gap_seconds": 3,
+  "min_result_gap_frames": 90,
+  "frame_skip_interval": 10
+  },
+  "_comment": {
+    "min_result_gap_frames": "If same number appears for 60-90 frames at startup, ignore duplicates (default: 90). Adjust between 60-90 as needed."
   },
   "strategy": {
     "type": "even_odd",
     "base_bet": 10.0,
-    "max_gales": 5,
-    "multiplier": 2.0,
-    "streak_length": 5,
-    "zero_policy": "count_as_loss",
+    "max_gales": 6,
+    "multiplier": 1.75,
+    "streak_length": 2,
+    "zero_policy": "neutral",
     "keepalive_stake": 1.0
   },
   "betting": {
