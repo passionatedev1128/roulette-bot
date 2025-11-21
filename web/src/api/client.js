@@ -69,15 +69,33 @@ export const fetchConfig = async () => {
   try {
     const { data } = await api.get('/api/config/');
     console.log('fetchConfig response:', data);
-    // Ensure we return the data in the expected format
+    
+    // The backend returns ConfigResponse which is { config: {...} }
+    // Accept both formats: { config: {...} } or just the config object
     if (data && typeof data === 'object') {
-      return data;
+      // If it has a 'config' property, return as-is
+      if ('config' in data) {
+        return data;
+      }
+      // If it's the config object directly, wrap it
+      if (typeof data === 'object' && data !== null) {
+        return { config: data };
+      }
     }
+    
+    // If data is null/undefined, return empty config
+    if (!data) {
+      console.warn('Config response is empty, returning empty config');
+      return { config: {} };
+    }
+    
     throw new Error('Invalid config response format');
   } catch (error) {
     console.error('fetchConfig error:', error);
     console.error('Response:', error.response?.data);
-    throw error;
+    // Don't throw, return empty config instead to prevent UI breaking
+    console.warn('Returning empty config due to error');
+    return { config: {} };
   }
 };
 
