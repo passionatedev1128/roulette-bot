@@ -127,6 +127,8 @@ class BotManager:
     def _create_bot(self) -> RouletteBot:
         """Instantiate a RouletteBot with current configuration."""
         
+        logger = logging.getLogger(__name__)
+        
         bot = RouletteBot(
             str(self.config_path),
             event_dispatcher=self.event_dispatcher,
@@ -153,10 +155,8 @@ class BotManager:
             start_frame = int(os.environ.get('BOT_START_FRAME', '1000'))
             frame_detector = FrameDetector(self._config, video_path, start_frame=start_frame)
             bot.detector = frame_detector
-            logger = logging.getLogger(__name__)
             logger.info(f"Using video file for input: {video_path} (start_frame={start_frame})")
         else:
-            logger = logging.getLogger(__name__)
             logger.warning(
                 "No video file configured. Bot will use screen capture. "
                 "To use video, set BOT_VIDEO_PATH environment variable or place 'roleta_brazileria.mp4' in project root."

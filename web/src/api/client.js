@@ -67,8 +67,10 @@ export const fetchBetHistory = async (limit = 20) => {
 
 export const fetchConfig = async () => {
   try {
-    const { data } = await api.get('/api/config/');
-    console.log('fetchConfig response:', data);
+    console.log('[fetchConfig] Starting request to:', api.defaults.baseURL + '/api/config/');
+    const response = await api.get('/api/config/');
+    const data = response.data;
+    console.log('[fetchConfig] Response received:', { status: response.status, data });
     
     // The backend returns ConfigResponse which is { config: {...} }
     // Accept both formats: { config: {...} } or just the config object
@@ -77,20 +79,33 @@ export const fetchConfig = async () => {
       if ('config' in data) {
         // Ensure config is an object, not null/undefined
         if (data.config && typeof data.config === 'object') {
+          console.log('[fetchConfig] Valid config structure with config property');
           return data;
         }
         // If config is missing or invalid, return default structure
-        return { config: {} };
+        console.warn('[fetchConfig] Config property exists but is invalid:', data.config);
+        return { 
+          config: {
+            detection: {},
+            strategy: { type: 'even_odd', base_bet: 10.0, max_gales: 6, multiplier: 1.75, streak_length: 2, zero_policy: 'neutral', keepalive_stake: 1.0 },
+            betting: {},
+            table: {},
+            session: { maintenance_bet_interval: 1800, min_bet_amount: 1.0 },
+            risk: { initial_balance: 1000.0, stop_loss: 500.0, guarantee_fund_percentage: 20 },
+            logging: { logs_dir: 'logs', log_level: 'INFO' }
+          }
+        };
       }
       // If it's the config object directly, wrap it
       if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+        console.log('[fetchConfig] Wrapping config object');
         return { config: data };
       }
     }
     
     // If data is null/undefined, return default config structure
     if (!data) {
-      console.warn('Config response is empty, returning default config structure');
+      console.warn('[fetchConfig] Config response is empty, returning default config structure');
       return { 
         config: {
           detection: {},
@@ -104,12 +119,29 @@ export const fetchConfig = async () => {
       };
     }
     
+    console.error('[fetchConfig] Invalid config response format:', data);
     throw new Error('Invalid config response format');
   } catch (error) {
-    console.error('fetchConfig error:', error);
-    console.error('Response:', error.response?.data);
-    // Return default config structure instead of empty to prevent UI breaking
-    console.warn('Returning default config structure due to error');
+    console.error('[fetchConfig] Error caught:', error);
+    console.error('[fetchConfig] Error message:', error.message);
+    console.error('[fetchConfig] Error response:', error.response);
+    console.error('[fetchConfig] Error response data:', error.response?.data);
+    console.error('[fetchConfig] Error response status:', error.response?.status);
+    console.error('[fetchConfig] API base URL:', api.defaults.baseURL);
+    
+    // Check if it's a network error (no response)
+    if (!error.response) {
+      console.error('[fetchConfig] Network error - no response received. Possible causes:');
+      console.error('  - Backend not accessible at:', api.defaults.baseURL);
+      console.error('  - CORS error (check Network tab)');
+      console.error('  - Network connectivity issue');
+      console.error('  - ngrok not running or URL changed');
+    } else {
+      console.error('[fetchConfig] HTTP error:', error.response.status, error.response.statusText);
+    }
+    
+    // Return default config structure instead of throwing to prevent UI breaking
+    console.warn('[fetchConfig] Returning default config structure due to error');
     return { 
       config: {
         detection: {},
