@@ -404,36 +404,6 @@ const App = () => {
 
   return (
     <div className="app">
-      {!demoMode && (
-        <div style={{
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          color: 'white',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          marginBottom: '16px',
-          textAlign: 'center',
-          fontWeight: 600,
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        }}>
-          👁️ Quer ver a interface com dados de exemplo? 
-          <button 
-            onClick={enableDemoMode}
-            style={{
-              marginLeft: '12px',
-              padding: '6px 16px',
-              background: 'rgba(255,255,255,0.25)',
-              border: '1px solid rgba(255,255,255,0.4)',
-              borderRadius: '6px',
-              color: 'white',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-            }}
-          >
-            Ativar modo demo
-          </button>
-        </div>
-      )}
       {demoMode && (
         <div style={{
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
