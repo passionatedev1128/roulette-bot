@@ -23,9 +23,18 @@ const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadP
   const [selectedPreset, setSelectedPreset] = useState('');
 
   useEffect(() => {
+    console.log('ConfigForm received configData:', configData);
     if (configData?.config) {
       setFormValue(deepClone(configData.config));
       setSelectedPreset('');
+    } else if (configData) {
+      // Handle case where configData might be the config directly
+      console.warn('ConfigData structure unexpected:', configData);
+      if (typeof configData === 'object' && !configData.config) {
+        // Maybe the response is just the config object
+        setFormValue(deepClone(configData));
+        setSelectedPreset('');
+      }
     }
   }, [configData]);
 

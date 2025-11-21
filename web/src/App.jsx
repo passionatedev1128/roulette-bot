@@ -38,10 +38,22 @@ const App = () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('demo') === 'true') {
       localStorage.setItem('demoMode', 'true');
+      console.log('Demo mode enabled via URL parameter');
       return true;
     }
-    return isDemoMode();
+    const isDemo = isDemoMode();
+    console.log('Demo mode check:', { isDemo, localStorage: localStorage.getItem('demoMode'), urlParam: urlParams.get('demo') });
+    return isDemo;
   });
+  
+  // Log API calls status
+  useEffect(() => {
+    console.log('App initialized:', {
+      demoMode,
+      willMakeAPICalls: !demoMode,
+      API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    });
+  }, [demoMode]);
 
   // Initialize mock data in demo mode
   useEffect(() => {
@@ -94,25 +106,40 @@ const App = () => {
     queryKey: ['status'], 
     queryFn: demoMode ? () => Promise.resolve(mockData.status()) : fetchStatus, 
     refetchInterval: demoMode ? false : 5000,
-    enabled: true,
+    enabled: true, // Always enabled, but uses mock data in demo mode
+    onError: (error) => {
+      console.error('Failed to fetch status:', error);
+    },
   });
   
   const balanceQuery = useQuery({ 
     queryKey: ['balance'], 
     queryFn: demoMode ? () => Promise.resolve(mockData.balance()) : fetchBalance, 
     refetchInterval: demoMode ? false : 5000,
+    enabled: true,
+    onError: (error) => {
+      console.error('Failed to fetch balance:', error);
+    },
   });
   
   const resultsQuery = useQuery({ 
     queryKey: ['results'], 
     queryFn: demoMode ? () => Promise.resolve(mockData.results(20)) : () => fetchResults(20), 
     refetchInterval: demoMode ? false : 10000,
+    enabled: true,
+    onError: (error) => {
+      console.error('Failed to fetch results:', error);
+    },
   });
   
   const activeBetQuery = useQuery({ 
     queryKey: ['activeBet'], 
     queryFn: demoMode ? () => Promise.resolve(mockData.activeBet()) : fetchActiveBet, 
     refetchInterval: demoMode ? false : 7000,
+    enabled: true,
+    onError: (error) => {
+      console.error('Failed to fetch active bet:', error);
+    },
   });
   
   const statusRunning = statusQuery.data?.running === true;
@@ -125,6 +152,15 @@ const App = () => {
   const configQuery = useQuery({ 
     queryKey: ['config'], 
     queryFn: demoMode ? () => Promise.resolve(mockData.config()) : fetchConfig,
+    enabled: !demoMode, // Only enable if not in demo mode
+    retry: 3,
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error('Failed to fetch config:', error);
+    },
+    onSuccess: (data) => {
+      console.log('Config fetched successfully:', data);
+    },
   });
   
   const presetsQuery = useQuery({ 
@@ -514,15 +550,48 @@ const App = () => {
         />
       </div>
 
-      <ConfigForm
-        configData={configQuery.data}
-        onSave={onSaveConfig}
-        saving={updateConfigMutation.isLoading}
-        presets={presets}
-        onSavePreset={onSavePreset}
-        onLoadPreset={onLoadPreset}
-        isBotRunning={statusQuery.data?.running === true}
-      />
+      {configQuery.isLoading && (
+        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+          Carregando configuração...
+        </div>
+      )}
+      {configQuery.isError && (
+        <div style={{ 
+          padding: '20px', 
+          margin: '20px', 
+          background: '#fee', 
+          border: '1px solid #fcc', 
+          borderRadius: '8px',
+          color: '#c33'
+        }}>
+          <strong>Erro ao carregar configuração:</strong> {configQuery.error?.message || 'Erro desconhecido'}
+          <button 
+            onClick={() => configQuery.refetch()}
+            style={{
+              marginLeft: '10px',
+              padding: '5px 15px',
+              background: '#c33',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+      {!configQuery.isLoading && !configQuery.isError && (
+        <ConfigForm
+          configData={configQuery.data}
+          onSave={onSaveConfig}
+          saving={updateConfigMutation.isLoading}
+          presets={presets}
+          onSavePreset={onSavePreset}
+          onLoadPreset={onLoadPreset}
+          isBotRunning={statusQuery.data?.running === true}
+        />
+      )}
     </div>
   );
 };
