@@ -429,7 +429,18 @@ const App = () => {
     }
   };
 
-  const presets = useMemo(() => presetsQuery.data ?? [], [presetsQuery.data]);
+  const presets = useMemo(() => {
+    const data = presetsQuery.data;
+    // Ensure presets is always an array
+    if (Array.isArray(data)) {
+      return data;
+    }
+    // If data is not an array, return empty array
+    if (data !== null && data !== undefined) {
+      console.warn('Presets data is not an array:', data);
+    }
+    return [];
+  }, [presetsQuery.data]);
 
   const enableDemoMode = () => {
     localStorage.setItem('demoMode', 'true');
@@ -513,7 +524,7 @@ const App = () => {
               </tr>
             </thead>
             <tbody>
-              {strategyStatsQuery.data?.stats && strategyStatsQuery.data.stats.length > 0 ? (
+              {strategyStatsQuery.data?.stats && Array.isArray(strategyStatsQuery.data.stats) && strategyStatsQuery.data.stats.length > 0 ? (
                 strategyStatsQuery.data.stats.map((row) => (
                   <tr key={row.strategy}>
                     <td>{row.strategy}</td>

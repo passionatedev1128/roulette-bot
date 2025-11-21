@@ -179,9 +179,9 @@ const ConfigForm = ({ configData, onSave, saving, presets, onSavePreset, onLoadP
             <button type="button" onClick={handlePresetSave} disabled={!presetName}>Salvar preset</button>
             <select value={selectedPreset} onChange={handlePresetLoad}>
               <option value="" disabled>Carregar preset…</option>
-              {(presets ?? []).map((preset) => (
+              {Array.isArray(presets) ? presets.map((preset) => (
                 <option key={preset.slug} value={preset.slug}>{preset.name}</option>
-              ))}
+              )) : null}
             </select>
           </div>
         </div>

@@ -75,27 +75,52 @@ export const fetchConfig = async () => {
     if (data && typeof data === 'object') {
       // If it has a 'config' property, return as-is
       if ('config' in data) {
-        return data;
+        // Ensure config is an object, not null/undefined
+        if (data.config && typeof data.config === 'object') {
+          return data;
+        }
+        // If config is missing or invalid, return default structure
+        return { config: {} };
       }
       // If it's the config object directly, wrap it
-      if (typeof data === 'object' && data !== null) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
         return { config: data };
       }
     }
     
-    // If data is null/undefined, return empty config
+    // If data is null/undefined, return default config structure
     if (!data) {
-      console.warn('Config response is empty, returning empty config');
-      return { config: {} };
+      console.warn('Config response is empty, returning default config structure');
+      return { 
+        config: {
+          detection: {},
+          strategy: { type: 'even_odd', base_bet: 10.0, max_gales: 6, multiplier: 1.75, streak_length: 2, zero_policy: 'neutral', keepalive_stake: 1.0 },
+          betting: {},
+          table: {},
+          session: { maintenance_bet_interval: 1800, min_bet_amount: 1.0 },
+          risk: { initial_balance: 1000.0, stop_loss: 500.0, guarantee_fund_percentage: 20 },
+          logging: { logs_dir: 'logs', log_level: 'INFO' }
+        }
+      };
     }
     
     throw new Error('Invalid config response format');
   } catch (error) {
     console.error('fetchConfig error:', error);
     console.error('Response:', error.response?.data);
-    // Don't throw, return empty config instead to prevent UI breaking
-    console.warn('Returning empty config due to error');
-    return { config: {} };
+    // Return default config structure instead of empty to prevent UI breaking
+    console.warn('Returning default config structure due to error');
+    return { 
+      config: {
+        detection: {},
+        strategy: { type: 'even_odd', base_bet: 10.0, max_gales: 6, multiplier: 1.75, streak_length: 2, zero_policy: 'neutral', keepalive_stake: 1.0 },
+        betting: {},
+        table: {},
+        session: { maintenance_bet_interval: 1800, min_bet_amount: 1.0 },
+        risk: { initial_balance: 1000.0, stop_loss: 500.0, guarantee_fund_percentage: 20 },
+        logging: { logs_dir: 'logs', log_level: 'INFO' }
+      }
+    };
   }
 };
 
@@ -110,8 +135,25 @@ export const savePreset = async (name, config) => {
 };
 
 export const fetchPresets = async () => {
-  const { data } = await api.get('/api/config/presets');
-  return data;
+  try {
+    const { data } = await api.get('/api/config/presets');
+    console.log('fetchPresets response:', data);
+    
+    // Backend returns List[PresetSummary] which should be an array
+    // Ensure we always return an array
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // If data is not an array, return empty array
+    console.warn('Presets response is not an array, returning empty array:', data);
+    return [];
+  } catch (error) {
+    console.error('fetchPresets error:', error);
+    console.error('Response:', error.response?.data);
+    // Return empty array instead of throwing
+    return [];
+  }
 };
 
 export const loadPreset = async (slug) => {
