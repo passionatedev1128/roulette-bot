@@ -1,0 +1,29 @@
+# Brazilian Roulette Bot - Dependencies
+
+# Core dependencies
+opencv-python>=4.8.0
+numpy>=1.24.0
+pytesseract>=0.3.10
+pyautogui>=0.9.54
+Pillow>=10.0.0
+
+# Configuration
+PyYAML>=6.0.1
+
+# Data handling
+pandas>=2.0.0
+
+# Web interface backend
+fastapi>=0.103.0
+uvicorn[standard]>=0.23.0
+
+# Optional but recommended
+imutils>=0.5.4
+
+# Logging (built-in, but can enhance)
+colorlog>=6.7.0
+
+# Testing (optional for development)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+

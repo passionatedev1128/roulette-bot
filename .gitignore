@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+bot.log
+
+# Configuration (keep default, ignore user configs)
+config/*.json
+!config/default_config.json
+
+# Database
+*.db
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Templates (user-created)
+templates/*.png
+!templates/.gitkeep
+
+# Screenshots
+screenshots/
+*.png
+*.jpg
+*.jpeg
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Videos and media
+*.mp4
+*.png
+*.jpg
+*.jpeg
+!templates/**/*.png
+!winning-number_templates/**/*.png
+!betting-number_templates/**/*.png
+
+# Test results and outputs
+test_results/
+detection_debug/
+detection_region_output/
+ocr_debug/
+
+# Jupyter notebooks
+*.ipynb
+!docs/**/*.ipynb
+
+# Archive and old documentation
+docs/archive/
+
+# Script outputs
+scripts/*.json
+scripts/*.png
+scripts/*.jpg

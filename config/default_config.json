@@ -1,0 +1,240 @@
+{
+  "detection": {
+    "screen_region": [
+      953,
+      511,
+      57,
+      55
+    ],
+    "winning_templates_dir": "winning-number_templates/",
+    "winning_template_threshold": 0.65,
+    "ocr_confidence_threshold": 0.9,
+    "min_result_gap_seconds": 15,
+    "min_result_gap_frames": 90,
+    "frame_skip_interval": 30,
+    "video_frame_skip_interval": 30,
+    "loop_delay_no_detection": 0.1,
+    "loop_delay_after_detection": 0.05,
+    "loop_delay_duplicate": 0.2
+  },
+  "_comment": {
+    "min_result_gap_frames": "If same number appears for 60-90 frames at startup, ignore duplicates (default: 90). Adjust between 60-90 as needed.",
+    "game_cycle": "Wheel spins for 14 seconds, then winning number displays for 2-3 seconds (appears 15s after wheel starts). Total cycle is 15 seconds.",
+    "frame_skip_interval": "Process every Nth frame in real-time mode (default: 30 = 1 second at 30fps). Higher values reduce CPU usage.",
+    "video_frame_skip_interval": "Process every Nth frame in video mode (default: 30 = 1 second at 30fps). This ensures detection every 1 second.",
+    "min_result_gap_seconds": "Set to 15 seconds to avoid duplicate detections within the same game cycle (one cycle = 15 seconds). If same number detected within 15s, ignore it.",
+    "loop_delay_no_detection": "Sleep time (seconds) when no detection is found (default: 0.1). Increase to reduce CPU usage.",
+    "loop_delay_after_detection": "Sleep time (seconds) after successful detection (default: 0.05). Prevents excessive processing.",
+    "loop_delay_duplicate": "Sleep time (seconds) when duplicate detection is found (default: 0.2). Reduces CPU when same result detected multiple times."
+  },
+  "strategy": {
+    "type": "even_odd",
+    "base_bet": 10,
+    "max_gales": 6,
+    "multiplier": 2,
+    "streak_length": 5,
+    "zero_policy": "neutral",
+    "keepalive_stake": 1
+  },
+  "betting": {
+    "betting_areas": {
+      "0": [
+        786,
+        825
+      ],
+      "1": [
+        818,
+        858
+      ],
+      "2": [
+        817,
+        821
+      ],
+      "3": [
+        817,
+        790
+      ],
+      "4": [
+        854,
+        858
+      ],
+      "5": [
+        851,
+        825
+      ],
+      "6": [
+        851,
+        790
+      ],
+      "7": [
+        884,
+        857
+      ],
+      "8": [
+        889,
+        821
+      ],
+      "9": [
+        886,
+        790
+      ],
+      "10": [
+        921,
+        854
+      ],
+      "11": [
+        920,
+        822
+      ],
+      "12": [
+        921,
+        791
+      ],
+      "13": [
+        954,
+        857
+      ],
+      "14": [
+        952,
+        825
+      ],
+      "15": [
+        957,
+        787
+      ],
+      "16": [
+        987,
+        858
+      ],
+      "17": [
+        992,
+        819
+      ],
+      "18": [
+        990,
+        788
+      ],
+      "19": [
+        1022,
+        854
+      ],
+      "20": [
+        1021,
+        822
+      ],
+      "21": [
+        1023,
+        790
+      ],
+      "22": [
+        1053,
+        859
+      ],
+      "23": [
+        1053,
+        821
+      ],
+      "24": [
+        1055,
+        791
+      ],
+      "25": [
+        1089,
+        857
+      ],
+      "26": [
+        1088,
+        824
+      ],
+      "27": [
+        1085,
+        792
+      ],
+      "28": [
+        1126,
+        850
+      ],
+      "29": [
+        1123,
+        820
+      ],
+      "30": [
+        1125,
+        790
+      ],
+      "31": [
+        1160,
+        855
+      ],
+      "32": [
+        1156,
+        825
+      ],
+      "33": [
+        1158,
+        788
+      ],
+      "34": [
+        1191,
+        858
+      ],
+      "35": [
+        1189,
+        822
+      ],
+      "36": [
+        1191,
+        791
+      ],
+      "red": [
+        970,
+        904
+      ],
+      "black": [
+        1040,
+        906
+      ],
+      "even": [
+        907,
+        905
+      ],
+      "odd": [
+        1111,
+        906
+      ]
+    },
+    "confirm_button": [
+      1044,
+      949
+    ],
+    "requires_amount_entry": false,
+    "chip_selection": [
+      1309,
+      947
+    ],
+    "human_delays": {
+      "min": 0.1,
+      "max": 0.5
+    }
+  },
+  "table": {
+    "name": "Roleta Brasileira",
+    "provider": "To be confirmed"
+  },
+  "session": {
+    "maintenance_bet_interval": 1560,
+    "min_bet_amount": 1
+  },
+  "risk": {
+    "initial_balance": 1000,
+    "stop_loss": 500,
+    "stop_loss_count": null,
+    "stop_win": null,
+    "stop_win_count": null,
+    "guarantee_fund_percentage": 20
+  },
+  "logging": {
+    "logs_dir": "logs",
+    "log_level": "INFO"
+  }
+}
