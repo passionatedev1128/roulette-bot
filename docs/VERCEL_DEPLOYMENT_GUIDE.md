@@ -64,19 +64,19 @@ Before starting the backend, set the environment variable:
 
 **Windows PowerShell:**
 ```powershell
-$env:ROULETTE_WEB_CORS="https://your-app.vercel.app,http://localhost:3000"
+$env:ROULETTE_WEB_CORS="https://roulette-bot-zeta.vercel.app,http://localhost:3000"
 uvicorn backend.server.app:app --host 0.0.0.0 --port 8000
 ```
 
 **Windows CMD:**
 ```cmd
-set ROULETTE_WEB_CORS=https://your-app.vercel.app,http://localhost:3000
+set ROULETTE_WEB_CORS="https://roulette-bot-zeta.vercel.app,http://localhost:3000"
 uvicorn backend.server.app:app --host 0.0.0.0 --port 8000
 ```
 
 **Linux/Mac:**
 ```bash
-export ROULETTE_WEB_CORS="https://your-app.vercel.app,http://localhost:3000"
+export ROULETTE_WEB_CORS="https://roulette-bot-zeta.vercel.app,http://localhost:3000"
 uvicorn backend.server.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -134,20 +134,20 @@ You can also update CORS after deploying to Vercel. Just restart your backend wi
 
 ### Step 6: Update Environment Variables After Deployment
 
-After deployment, Vercel will give you a URL like `https://your-app.vercel.app`.
+After deployment, Vercel will give you a URL like `https://roulette-bot-zeta.vercel.app`.
 
 1. Go to your Vercel project dashboard
 2. Navigate to **Settings** > **Environment Variables**
 3. Update the backend CORS environment variable on your local machine:
    ```bash
    # Replace with your actual Vercel URL
-   export ROULETTE_WEB_CORS="https://your-app.vercel.app,http://localhost:3000"
+   export ROULETTE_WEB_CORS="https://roulette-bot-zeta.vercel.app,http://localhost:3000"
    ```
 4. Restart your backend server
 
 ### Step 7: Test the Deployment
 
-1. Open your Vercel URL (e.g., `https://your-app.vercel.app`)
+1. Open your Vercel URL (e.g., `https://roulette-bot-zeta.vercel.app`)
 2. Check browser console for any connection errors
 3. Verify the frontend can connect to your backend:
    - Status should show "Connected"
@@ -230,7 +230,7 @@ You must keep ngrok running while your backend is active. If ngrok stops:
 
 ```bash
 # Terminal 1: Start Backend
-export ROULETTE_WEB_CORS="https://your-app.vercel.app,http://localhost:3000"
+export ROULETTE_WEB_CORS="https://roulette-bot-zeta.vercel.app,http://localhost:3000"
 uvicorn backend.server.app:app --host 0.0.0.0 --port 8000
 
 # Terminal 2: Start ngrok
