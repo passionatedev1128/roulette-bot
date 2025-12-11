@@ -29,16 +29,36 @@ class BetController:
         self.betting_areas = self.betting_config.get('betting_areas', {})
         self.human_delays = self.betting_config.get('human_delays', {'min': 0.1, 'max': 0.5})
         
+        # Chip selection coordinates
+        self.chip_selection_coords = self.betting_config.get('chip_selection_coordinates', {})
+        # Fallback to single chip_selection if chip_selection_coordinates not available
+        if not self.chip_selection_coords:
+            single_chip = self.betting_config.get('chip_selection')
+            if single_chip:
+                # Use single chip coordinate for all chip values (legacy support)
+                self.chip_selection_coords = {
+                    '0.5': single_chip,
+                    '1': single_chip,
+                    '2.5': single_chip,
+                    '5': single_chip,
+                    '20': single_chip,
+                    '50': single_chip
+                }
+                logger.info("Using single chip_selection coordinate for all chip values")
+        
         # State tracking
         self.last_bet_time = None
         self.bet_placed_flag = False
         self.last_bet_details = None
+        self.last_selected_chip = None
         
         # Safety settings
         pyautogui.PAUSE = 0.1  # Small pause between actions
         pyautogui.FAILSAFE = True  # Enable failsafe (move mouse to corner to stop)
         
         logger.info("BetController initialized")
+        if self.chip_selection_coords:
+            logger.info(f"Chip selection coordinates available for: {list(self.chip_selection_coords.keys())}")
     
     def _random_delay(self):
         """Add random human-like delay."""
@@ -126,6 +146,57 @@ class BetController:
             logger.error(f"Error entering amount: {e}")
             raise
     
+    def select_chip(self, chip_value: float) -> bool:
+        """
+        Select a chip value before placing bet.
+        
+        Args:
+            chip_value: Chip value to select (0.5, 1, 2.5, 5, 20, or 50)
+            
+        Returns:
+            True if chip selected successfully, False otherwise
+        """
+        try:
+            # Convert chip value to string key
+            chip_key = str(chip_value)
+            
+            # Check if we have coordinates for this chip
+            if chip_key not in self.chip_selection_coords:
+                logger.warning(f"Chip selection coordinates not found for {chip_value}")
+                # Try to find closest available chip
+                available_chips = [float(k) for k in self.chip_selection_coords.keys()]
+                if available_chips:
+                    closest_chip = min(available_chips, key=lambda x: abs(x - chip_value))
+                    chip_key = str(closest_chip)
+                    logger.info(f"Using closest available chip: {closest_chip} instead of {chip_value}")
+                else:
+                    logger.warning("No chip selection coordinates available")
+                    return False
+            
+            # Get coordinates for this chip
+            chip_coords = self.chip_selection_coords[chip_key]
+            if not isinstance(chip_coords, list) or len(chip_coords) < 2:
+                logger.error(f"Invalid chip coordinates for {chip_value}: {chip_coords}")
+                return False
+            
+            x, y = chip_coords[0], chip_coords[1]
+            
+            # Only select chip if it's different from last selected
+            if self.last_selected_chip != chip_value:
+                logger.info(f"Selecting chip: {chip_value} at ({x}, {y})")
+                self.click_with_delay(x, y)
+                self.last_selected_chip = chip_value
+                self._random_delay()  # Wait for chip selection to register
+                logger.debug(f"Chip {chip_value} selected successfully")
+            else:
+                logger.debug(f"Chip {chip_value} already selected, skipping")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error selecting chip {chip_value}: {e}")
+            return False
+    
     def confirm_bet(self):
         """Confirm bet placement."""
         try:
@@ -169,13 +240,15 @@ class BetController:
             logger.warning(f"Error verifying bet: {e}")
             return False
     
-    def place_bet(self, bet_type: str, bet_amount: float) -> Dict:
+    def place_bet(self, bet_type: str, bet_amount: float, chip_value: Optional[float] = None) -> Dict:
         """
         Place a bet on the table.
         
         Args:
             bet_type: 'red', 'black', 'green', 'even', 'odd', or number string
             bet_amount: Amount to bet
+            chip_value: Optional chip value to use (0.5, 1, 2.5, 5, 20, or 50).
+                       If not provided, will use closest available chip.
             
         Returns:
             Dictionary with bet placement result:
@@ -183,6 +256,7 @@ class BetController:
                 "success": bool,
                 "bet_type": str,
                 "bet_amount": float,
+                "chip_value": float,
                 "timestamp": float,
                 "error": str (if failed)
             }
@@ -191,6 +265,7 @@ class BetController:
             "success": False,
             "bet_type": bet_type,
             "bet_amount": bet_amount,
+            "chip_value": chip_value,
             "timestamp": time.time(),
             "error": None
         }
@@ -202,6 +277,27 @@ class BetController:
                 result["error"] = "Bet already exists"
                 return result
             
+            # Determine chip value to use
+            if chip_value is None:
+                # Find best chip value based on bet amount
+                available_chips = [float(k) for k in self.chip_selection_coords.keys()]
+                if available_chips:
+                    # Use largest chip that fits into bet amount
+                    suitable_chips = [c for c in available_chips if c <= bet_amount]
+                    if suitable_chips:
+                        chip_value = max(suitable_chips)
+                    else:
+                        chip_value = min(available_chips)
+                    logger.info(f"Auto-selected chip: {chip_value} for bet amount: {bet_amount}")
+                else:
+                    logger.warning("No chip selection coordinates available, proceeding without chip selection")
+            
+            # Select chip if chip selection coordinates are available
+            if self.chip_selection_coords and chip_value:
+                if not self.select_chip(chip_value):
+                    logger.warning(f"Failed to select chip {chip_value}, proceeding anyway")
+                result["chip_value"] = chip_value
+            
             # Find betting area
             betting_coords = self.find_betting_area(bet_type)
             if not betting_coords:
@@ -212,13 +308,26 @@ class BetController:
             
             x, y = betting_coords
             
+            # Calculate number of clicks needed
+            num_clicks = 1
+            if chip_value and chip_value > 0:
+                num_clicks = int(bet_amount / chip_value)
+                if num_clicks < 1:
+                    num_clicks = 1
+                logger.info(f"Bet amount: {bet_amount}, Chip: {chip_value}, Clicks needed: {num_clicks}")
+            
             # Place bet
             logger.info(f"Placing bet: {bet_type} - {bet_amount}")
+            if chip_value:
+                logger.info(f"Using chip: {chip_value} x {num_clicks}")
             logger.info(f"Moving mouse to betting area: ({x}, {y})")
             
-            # Click on betting area
-            self.click_with_delay(x, y)
-            logger.info(f" Mouse moved and clicked at ({x}, {y})")
+            # Click on betting area (multiple times if needed)
+            for click_num in range(num_clicks):
+                self.click_with_delay(x, y)
+                if click_num < num_clicks - 1:
+                    self._random_delay()  # Small delay between multiple clicks
+            logger.info(f" Mouse moved and clicked {num_clicks} time(s) at ({x}, {y})")
             
             # Enter bet amount (if needed)
             # Some platforms may require amount entry, others may have fixed chips

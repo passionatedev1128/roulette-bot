@@ -234,7 +234,7 @@ if __name__ == '__main__':
         default='config/default_config.json',
         help='Path to config file'
     )
-    parser.add_argument(
+    parser.add_argument(    
         '--duration',
         type=int,
         default=10,

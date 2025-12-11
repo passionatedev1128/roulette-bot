@@ -36,8 +36,27 @@ def capture_coordinates():
         ("number_display_center", "Number display area (center video, where winning number appears) - Press Ctrl+C to skip"),
         ("green_bet_button", "GREEN/Zero betting button (if exists) - Press Ctrl+C to skip"),
         ("confirm_button", "CONFIRM button (most games auto-confirm, press Ctrl+C to skip)"),
-        ("chip_selection", "Chip selection (0.5, 1, 2.5, 5, 20, 50) - Press Ctrl+C to skip"),
     ]
+    
+    # Chip selection targets - capture each chip value separately
+    chip_values = [0.5, 1, 2.5, 5, 20, 50]
+    chip_targets = [
+        (f"chip_{chip}", f"Chip selection {chip} - Click on the {chip} chip button/area")
+        for chip in chip_values
+    ]
+    
+    # Ask if user wants to capture chip coordinates
+    print("\n" + "=" * 70)
+    print("CHIP SELECTION COORDINATES")
+    print("=" * 70)
+    print("\nDo you want to capture coordinates for chip selection?")
+    print("Chips to capture: 0.5, 1, 2.5, 5, 20, 50")
+    capture_chips = input("Capture chip coordinates? (y/n, default: y): ").strip().lower()
+    if capture_chips != 'n':
+        targets.extend(chip_targets)
+        print(" ✓ Chip coordinates will be captured")
+    else:
+        print(" ⊘ Skipping chip coordinates")
     
     index = 0
     total_targets = len(targets)
@@ -161,6 +180,20 @@ def capture_coordinates():
         print(f'  "confirm_button": {coordinates["confirm_button"]},')
     if 'amount_input' in coordinates:
         print(f'  "amount_input": {coordinates["amount_input"]},')
+    
+    # Add chip selection coordinates
+    chip_coords = {}
+    for chip in [0.5, 1, 2.5, 5, 20, 50]:
+        key = f"chip_{chip}"
+        if key in coordinates:
+            chip_coords[str(chip)] = coordinates[key]
+    
+    if chip_coords:
+        print('  "chip_selection_coordinates": {')
+        for chip_value, coords in chip_coords.items():
+            print(f'    "{chip_value}": {coords},')
+        print('  },')
+    
     print('  // ... other betting settings')
     print('},')
     
