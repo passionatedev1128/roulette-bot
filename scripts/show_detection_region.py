@@ -3,12 +3,25 @@ Show Winning Number Detection Region on Desktop
 Displays a visual indicator showing where the bot detects winning numbers.
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import pyautogui
 import cv2
 import numpy as np
 import time
-from pathlib import Path
-from backend.app.config_loader import ConfigLoader
+import json
+
+try:
+    from backend.app.config_loader import ConfigLoader
+except ImportError:
+    ConfigLoader = None
 
 
 def capture_region_with_border(screen_region, border_size=5):
@@ -51,7 +64,11 @@ def show_detection_region(config_path: str = 'config/default_config.json', durat
         duration: How long to show the region (seconds)
     """
     # Load config
-    config = ConfigLoader.load_config(config_path)
+    if ConfigLoader:
+        config = ConfigLoader.load_config(config_path)
+    else:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
     screen_region = config.get('detection', {}).get('screen_region')
     
     if not screen_region:
